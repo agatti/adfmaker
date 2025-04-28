@@ -20,10 +20,10 @@ use log::{debug, error, trace, warn};
 use pretty_hex::{HexConfig, PrettyHex};
 
 use crate::{
-    allocator::{check_block_number, BitmapAllocator},
-    amigaostypes::{build_bcpl_string, BCPLString},
+    allocator::{BitmapAllocator, check_block_number},
+    amigaostypes::{BCPLString, build_bcpl_string},
     common::{
-        Error, BITMAP_BLOCK_NUMBER, BLOCKS_PER_IMAGE, DISK_BLOCK_LONGWORDS, DISK_BLOCK_SIZE,
+        BITMAP_BLOCK_NUMBER, BLOCKS_PER_IMAGE, DISK_BLOCK_LONGWORDS, DISK_BLOCK_SIZE, Error,
         MAXIMUM_NAME_LENGTH, ROOT_BLOCK_NUMBER,
     },
     directories::{allocate_directories, build_root_block, write_directory_hash_table},
@@ -265,12 +265,7 @@ impl DiskBlock {
         let (forward, backward, effective) = calculate_longword_offset(longword_offset);
 
         trace!(
-            "Writing {} at longword {} (SIZE - {}) [effective offset ${:04X} ({})].",
-            name,
-            forward,
-            backward,
-            effective,
-            effective
+            "Writing {name} at longword {forward} (SIZE - {backward}) [effective offset ${effective:04X} ({effective})]."
         );
         (effective..)
             .zip(value.to_be_bytes())
@@ -301,12 +296,7 @@ impl DiskBlock {
         let (forward, backward, effective) = calculate_longword_offset(longword_offset);
 
         trace!(
-            "Reading {} at longword {} (SIZE - {}) [effective offset ${:04X} ({})].",
-            name,
-            forward,
-            backward,
-            effective,
-            effective,
+            "Reading {name} at longword {forward} (SIZE - {backward}) [effective offset ${effective:04X} ({effective})].",
         );
         u32::from_be_bytes(
             self.payload[effective..(effective + mem::size_of::<u32>())]
@@ -351,12 +341,7 @@ impl DiskBlock {
         let (forward, backward, effective) = calculate_longword_offset(longword_offset);
 
         trace!(
-            "Writing {} at longword {} (SIZE - {}) [effective offset ${:04X} ({})].",
-            name,
-            forward,
-            backward,
-            effective,
-            effective
+            "Writing {name} at longword {forward} (SIZE - {backward}) [effective offset ${effective:04X} ({effective})]."
         );
 
         (effective..)
@@ -468,9 +453,9 @@ impl DiskImageBuilder {
                 return Err(Error::InvalidDiskName {
                     name: name.to_owned().into(),
                     reason: error.to_string().into(),
-                })
+                });
             }
-        };
+        }
         Ok(self)
     }
 
@@ -572,7 +557,10 @@ impl DiskImageBuilder {
 
         debug!("Allocating files.");
         for directory in DirectoryIterator::new(&self.root) {
-            debug!("Adding files for \"{}\".", directory.borrow().absolute_path());
+            debug!(
+                "Adding files for \"{}\".",
+                directory.borrow().absolute_path()
+            );
             for file_block in allocate_files(&directory, &mut bitmap_allocator)? {
                 assert!(
                     !blocks.contains_key(&file_block.index()),
@@ -634,7 +622,7 @@ impl DiskImageBuilder {
                 (index as usize) * DISK_BLOCK_SIZE,
                 (index as usize) * DISK_BLOCK_SIZE
             );
-            block.dump().iter().for_each(|line| trace!("{}", line));
+            block.dump().iter().for_each(|line| trace!("{line}"));
             // The last block is at offset ~901000, so it will always fit in an
             // `u64`.
             cursor.set_position(((index as usize) * DISK_BLOCK_SIZE) as u64);

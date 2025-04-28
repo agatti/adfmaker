@@ -11,9 +11,9 @@ use std::{cell::RefCell, mem, rc::Rc};
 use log::{debug, trace};
 
 use crate::{
-    allocator::{check_block_number, BitmapAllocator},
+    allocator::{BitmapAllocator, check_block_number},
     amigaostypes::{BCPLString, ST_FILE, T_DATA, T_LIST, T_SHORT},
-    common::{Error, DATA_BLOCKS_COUNT, DISK_BLOCK_SIZE},
+    common::{DATA_BLOCKS_COUNT, DISK_BLOCK_SIZE, Error},
     disk::DiskBlock,
     filesystem::{Node, NodeKind},
 };
@@ -139,7 +139,7 @@ fn allocate_file_blocks(
     contents_size: usize,
     bitmap_allocator: &mut BitmapAllocator,
 ) -> Result<(Vec<u32>, Vec<u32>), Error> {
-    debug!("Allocating blocks to fit {} bytes.", contents_size);
+    debug!("Allocating blocks to fit {contents_size} bytes.");
 
     let data_blocks_needed = if contents_size > 0 {
         contents_size.div_ceil(DATA_BLOCK_PAYLOAD_SIZE)
@@ -152,8 +152,7 @@ fn allocate_file_blocks(
         1
     };
     debug!(
-        "Needing {} header block(s) and {} data block(s).",
-        data_blocks_needed, header_blocks_needed
+        "Needing {data_blocks_needed} header block(s) and {header_blocks_needed} data block(s)."
     );
     let header_block_numbers: Vec<u32> = bitmap_allocator
         .allocate_blocks(header_blocks_needed, None)?
@@ -236,7 +235,7 @@ fn build_data_block(
     );
     disk_block.write_buffer(6, "payload", payload);
     trace!("Dumping block data before checksum calculation:");
-    disk_block.dump().iter().for_each(|line| trace!("{}", line));
+    disk_block.dump().iter().for_each(|line| trace!("{line}"));
 
     disk_block
 }
@@ -558,7 +557,7 @@ fn build_file_header_block(
     disk_block.write_longword(-1, "secondary type", ST_FILE);
 
     trace!("Dumping file list block in its current form:");
-    disk_block.dump().iter().for_each(|line| trace!("{}", line));
+    disk_block.dump().iter().for_each(|line| trace!("{line}"));
 
     disk_block
 }
@@ -662,7 +661,7 @@ fn build_file_list_block(
     disk_block.write_longword(-1, "secondary type", ST_FILE);
 
     trace!("Dumping file list block in its current form:");
-    disk_block.dump().iter().for_each(|line| trace!("{}", line));
+    disk_block.dump().iter().for_each(|line| trace!("{line}"));
 
     disk_block
 }

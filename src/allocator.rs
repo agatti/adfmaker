@@ -8,7 +8,7 @@
 
 use log::{debug, error, trace};
 
-use crate::common::{self, Error, BLOCKS_PER_IMAGE};
+use crate::common::{self, BLOCKS_PER_IMAGE, Error};
 
 /// The first block available for storing user data.
 pub const FIRST_BLOCK: u32 = 2;
@@ -24,7 +24,7 @@ pub const LAST_BLOCK: u32 = common::BLOCKS_PER_IMAGE as u32;
 /// [`Error::BitmapBlockOutOfRange`].
 pub(crate) fn check_block_number(block_number: u32) -> Result<(), Error> {
     if !(FIRST_BLOCK..LAST_BLOCK).contains(&block_number) {
-        error!("Block #{} is outside the disk image bounds.", block_number);
+        error!("Block #{block_number} is outside the disk image bounds.",);
         return Err(Error::BitmapBlockOutOfRange(block_number));
     }
 
@@ -70,12 +70,9 @@ impl BitmapAllocator {
 
         let mut start = first_block;
 
-        trace!("{} block(s) left to allocate.", blocks_count);
+        trace!("{blocks_count} block(s) left to allocate.");
         while blocks_count > 0 {
-            trace!(
-                "Scanning for a free available block starting from #{}.",
-                start
-            );
+            trace!("Scanning for a free available block starting from #{start}.");
 
             let mut allocated_block: Option<u32> = None;
 
@@ -92,10 +89,7 @@ impl BitmapAllocator {
                 );
 
                 if self.bits[index] {
-                    trace!(
-                        "Choosing block #{} for the allocation operation.",
-                        block_number
-                    );
+                    trace!("Choosing block #{block_number} for the allocation operation.");
                     allocated_block = Some(block_number);
                     break;
                 }
@@ -120,7 +114,7 @@ impl BitmapAllocator {
                 blocks.len()
             );
             blocks_count -= 1;
-            trace!("{} block(s) left to allocate.", blocks_count);
+            trace!("{blocks_count} block(s) left to allocate.");
             start = new_block + 1;
             if start >= LAST_BLOCK {
                 error!("End of bitmap data area reached.");
@@ -198,12 +192,12 @@ impl BitmapAllocator {
                 self.bits[index],
                 "Free block #{block_number} was already allocated.",
             );
-            trace!("Allocating block #{}.", block_number);
+            trace!("Allocating block #{block_number}.");
             self.bits[index] = false;
             self.available -= 1;
         }
 
-        debug!("Allocated {} block(s).", count);
+        debug!("Allocated {count} block(s).");
 
         Ok(blocks)
     }

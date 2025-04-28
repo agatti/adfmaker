@@ -9,7 +9,7 @@
 use std::{fmt, str::FromStr};
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use encoding::{all::ISO_8859_1, EncoderTrap, Encoding};
+use encoding::{EncoderTrap, Encoding, all::ISO_8859_1};
 use log::{debug, error};
 use memoize::memoize;
 
@@ -17,10 +17,6 @@ use crate::common::Error;
 
 #[doc(hidden)]
 macro_rules! report_bcpl_string_error {
-    ($name:expr, $cause:expr) => {
-        error!("Invalid BCPL string \"{}\": {}.", $name, $cause);
-    };
-
     ($name:expr, $cause:expr, $($field:expr),+) => {
         error!("Invalid BCPL string \"{}\": {}.", $name, format!($cause, $($field),+));
     };
@@ -193,7 +189,7 @@ pub(crate) fn build_bcpl_string(
     maximum_length: usize,
     invalid_characters: Option<&[char]>,
 ) -> Result<BCPLString, Error> {
-    debug!("Checking string \"{}\" for BCPL compliance.", string);
+    debug!("Checking string \"{string}\" for BCPL compliance.");
 
     if let Some(invalid_characters) = invalid_characters {
         for invalid_character in invalid_characters {
@@ -230,7 +226,7 @@ pub(crate) fn build_bcpl_string(
         });
     }
 
-    debug!("String \"{}\" can be a valid BCPL string.", string);
+    debug!("String \"{string}\" can be a valid BCPL string.");
 
     BCPLString::from_str(string)
 }
@@ -349,6 +345,7 @@ impl fmt::Display for DateStamp {
     }
 }
 
+#[allow(clippy::doc_overindented_list_items)]
 /// Amiga file object protection bits.
 ///
 /// This is a collection of five flags representing the access permissions that

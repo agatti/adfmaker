@@ -14,16 +14,13 @@ use std::{
     str::FromStr,
 };
 
-use encoding::{all::ISO_8859_1, EncoderTrap, Encoding};
+use encoding::{EncoderTrap, Encoding, all::ISO_8859_1};
 use log::{debug, trace};
 
 use crate::{
     allocator::{FIRST_BLOCK, LAST_BLOCK},
-    amigaostypes::{build_bcpl_string, BCPLString, DateStamp, ProtectionBits},
-    common::{
-        self, HASH_TABLE_BUCKETS, MAXIMUM_NAME_LENGTH,
-        ROOT_BLOCK_NUMBER,
-    },
+    amigaostypes::{BCPLString, DateStamp, ProtectionBits, build_bcpl_string},
+    common::{self, HASH_TABLE_BUCKETS, MAXIMUM_NAME_LENGTH, ROOT_BLOCK_NUMBER},
     filelist::DiskEntry,
 };
 
@@ -116,7 +113,7 @@ impl Node {
         comment: Option<&BCPLString>,
         protection_bits: Option<ProtectionBits>,
         timestamp: Option<DateStamp>,
-        payload: &Option<DiskEntry>,
+        payload: Option<&DiskEntry>,
     ) -> Rc<RefCell<Self>> {
         debug!(
             "Allocating filesystem node \"{}/{}\" ({}).",
@@ -133,7 +130,7 @@ impl Node {
             comment: comment.unwrap_or(&BCPLString::default()).to_owned(),
             name: name.to_owned(),
             timestamp: timestamp.unwrap_or_default(),
-            payload: payload.clone(),
+            payload: payload.cloned(),
             block: None,
         };
 
@@ -200,7 +197,7 @@ impl Node {
                     None,
                     None,
                     None,
-                    &None,
+                    None,
                 )
             };
         }
@@ -232,7 +229,11 @@ impl Node {
             "An invalid block number slipped by: {block}",
         );
 
-        debug!("Assigning block #{} to \"{}\".", block, self.absolute_path());
+        debug!(
+            "Assigning block #{} to \"{}\".",
+            block,
+            self.absolute_path()
+        );
 
         self.block = Some(block);
     }
@@ -468,7 +469,6 @@ impl Iterator for DirectoryIterator {
                     }
                 );
                 self.stack.push(child.clone());
-                continue;
             }
         }
         debug!("Iteration finished.");

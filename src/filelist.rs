@@ -13,7 +13,7 @@ use csv::StringRecord;
 use log::{debug, error};
 
 use crate::{
-    amigaostypes::{build_bcpl_string, BCPLString, DateStamp, ProtectionBits},
+    amigaostypes::{BCPLString, DateStamp, ProtectionBits, build_bcpl_string},
     common::{Error, MAXIMUM_COMMENT_LENGTH, MAXIMUM_FILE_SIZE, MAXIMUM_NAME_LENGTH},
 };
 
@@ -39,7 +39,7 @@ pub(crate) struct DiskEntry {
     comment: Option<BCPLString>,
     /// An optional set of permissions, as a [`ProtectionBits`] instance.
     protection_bits: Option<ProtectionBits>,
-    /// An optional timestamp, as a ['DateStamp`] instance.
+    /// An optional timestamp, as a [`DateStamp`] instance.
     timestamp: Option<DateStamp>,
     /// An optional [`Vec<u8>`] with file data read from disk.
     contents: Option<Vec<u8>>,
@@ -129,7 +129,7 @@ impl DiskEntry {
 /// # }
 /// ```
 fn normalise_target_path(path: &str) -> Result<String, Error> {
-    debug!("Normalising path \"{}\".", path);
+    debug!("Normalising path \"{path}\".");
 
     let mut path_fragments: Vec<&str> = vec![];
 
@@ -145,9 +145,9 @@ fn normalise_target_path(path: &str) -> Result<String, Error> {
                     name: path.to_owned().into(),
                     reason: format!("Fragment \"{fragment}\" cannot be a BCPL string: {error}.",)
                         .into(),
-                })
+                });
             }
-        };
+        }
     }
 
     debug!("Path normalised into: \"/{}\".", path_fragments.join("/"));
@@ -184,7 +184,7 @@ fn unwrap_record(
                 report_parse_error!(position.line(), error);
                 position.line()
             } else {
-                error!("Record parse failed: {}.", error);
+                error!("Record parse failed: {error}.");
                 0
             };
             Err(Error::InvalidFileList {
@@ -427,7 +427,7 @@ where
         }
 
         let target_path = parse_target_path(record.get(0), line)?;
-        debug!("Found target path: \"{}\"", target_path);
+        debug!("Found target path: \"{target_path}\"");
         let normalised_name = target_path.to_lowercase();
         if names_set.contains(&normalised_name) {
             report_parse_error!(line, "duplicated file entry \"{}\"", target_path);

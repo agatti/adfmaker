@@ -11,9 +11,9 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use log::{debug, trace};
 
 use crate::{
-    allocator::{check_block_number, BitmapAllocator},
+    allocator::{BitmapAllocator, check_block_number},
     amigaostypes::{BCPLString, DateStamp, ST_ROOT, ST_USERDIR, T_SHORT},
-    common::{self, Error, BITMAP_BLOCK_NUMBER, HASH_TABLE_BUCKETS, ROOT_BLOCK_NUMBER},
+    common::{self, BITMAP_BLOCK_NUMBER, Error, HASH_TABLE_BUCKETS, ROOT_BLOCK_NUMBER},
     disk::DiskBlock,
     filesystem::{DirectoryIterator, Node, NodeKind},
 };
@@ -53,7 +53,7 @@ pub(crate) fn allocate_directories(
         return Ok(vec![]);
     }
 
-    debug!("Allocating {} directory block(s).", directory_blocks_count);
+    debug!("Allocating {directory_blocks_count} directory block(s).");
     let mut directory_blocks =
         bitmap_allocator.allocate_blocks(directory_blocks_count, Some(BITMAP_BLOCK_NUMBER + 1))?;
 
@@ -70,7 +70,10 @@ pub(crate) fn allocate_directories(
     let mut blocks: Vec<DiskBlock> = vec![];
 
     for directory in DirectoryIterator::new(root) {
-        trace!("Current directory: \"{}\".", directory.borrow().absolute_path());
+        trace!(
+            "Current directory: \"{}\".",
+            directory.borrow().absolute_path()
+        );
         if directory.borrow().block().is_some() {
             debug!(
                 "Directory \"{}\" already has block {} assigned.",
@@ -203,7 +206,7 @@ pub(crate) fn build_root_block(disk_name: &BCPLString, root: &Rc<RefCell<Node>>)
     disk_block.write_longword(-1, "secondary type", ST_ROOT);
 
     trace!("Dumping root block in its current form:");
-    disk_block.dump().iter().for_each(|line| trace!("{}", line));
+    disk_block.dump().iter().for_each(|line| trace!("{line}"));
 
     disk_block
 }
@@ -336,7 +339,7 @@ pub(crate) fn build_directory_block(
     disk_block.write_longword(-1, "secondary type", ST_USERDIR);
 
     trace!("Dumping directory block in its current form:");
-    disk_block.dump().iter().for_each(|line| trace!("{}", line));
+    disk_block.dump().iter().for_each(|line| trace!("{line}"));
 
     trace!("Releasing filesystem node.");
     Ok(disk_block)
@@ -350,7 +353,10 @@ pub(crate) fn write_directory_hash_table(
     node: &Rc<RefCell<Node>>,
     built_blocks: &mut HashMap<u32, DiskBlock>,
 ) {
-    debug!("Writing hash table for \"{}\".", node.borrow().absolute_path());
+    debug!(
+        "Writing hash table for \"{}\".",
+        node.borrow().absolute_path()
+    );
 
     assert!(
         node.borrow().block().as_ref().is_some(),
@@ -373,7 +379,7 @@ pub(crate) fn write_directory_hash_table(
         );
 
         if bucket.is_empty() {
-            trace!("Bucket #{} is empty, skipping.", index);
+            trace!("Bucket #{index} is empty, skipping.");
             continue;
         }
 
