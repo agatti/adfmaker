@@ -1,6 +1,6 @@
 # An Amiga Disk Image Builder
 
-This tool only allows to build double density OFS and FFS disk images.  The main reason to not support high density images is to maximise compatiblity. Almost every Amiga machine was released with a double density floppy drive (except for the A4000), leaving A1000, A500, A500+, A2000 and A3000 models out (arguably the most popular ones).
+This tool only allows to build double density OFS and FFS disk images.  The main reason to not support high density images is to maximise compatibility. Almost every Amiga machine was released with a double density floppy drive (except for the A4000), leaving A1000, A500, A500+, A2000 and A3000 models out (arguably the most popular ones).
 
 This tool is not meant for interactive use or to modify existing images.  It was written to address a need to build Amiga disk images from a build script, with the disk images' content being already available and known to fit in the image.
 
@@ -48,7 +48,7 @@ The path of a CSV file containing the list of files to add along with their meta
 
 `-t`/`--type` (MANDATORY)
 
-The filesystem type, either `ofs` for an OFS disk image, or `ffs` for a FFS disk image.
+The filesystem type, either `ofs` for an OFS disk image, or `ffs` for an FFS disk image.
 
 `-b`/`--bootblock` (OPTIONAL)
 
@@ -64,7 +64,7 @@ Decrease logging verbosity (can be passed multiple times).
 
 ## File list format
 
-The file list is a CSV file with with five columns and a header row (the first non-empty line, ignored).  The columns are as follows:
+The file list is a CSV file with five columns and a header row (the first non-empty line, ignored).  The columns are as follows:
 
 - target file name
 - source file name (omitted for directories)
@@ -92,7 +92,7 @@ Entries with no source file name are assumed to be empty directories to be creat
 
 #### Comment
 
-Comments can be up to 80 characters long and if present must be convertible to a a valid [ISO-8859-1](https://en.wikipedia.org/wiki/ISO/IEC_8859-1) string.
+Comments can be up to 80 characters long and if present must be convertible to a valid [ISO-8859-1](https://en.wikipedia.org/wiki/ISO/IEC_8859-1) string.
 
 #### Protection bits
 

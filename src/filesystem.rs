@@ -51,7 +51,7 @@ impl fmt::Display for NodeKind {
 
 /// A filesystem object, can be either a file or a directory.
 ///
-/// This structure is meant to be part of a n-ary tree, containing not only
+/// This structure is meant to be part of an n-ary tree, containing not only
 /// references to parent and child nodes, but also associated payload data if
 /// any is present.
 #[derive(Clone)]
@@ -344,8 +344,8 @@ impl ChainedHashMap {
     /// No checks are done to avoid the same node appearing more than once in
     /// the map, same goes for the validity of most of the internal state of the
     /// node being added.  To retrieve a particular node look at
-    /// [``ChainedHashMap::find_entry``], and for iterating through nodes with
-    /// no order look at [``ChainedHashMap::nodes_iter``].
+    /// [`ChainedHashMap::find_entry`], and for iterating through nodes with
+    /// no order look at [`ChainedHashMap::nodes_iter`].
     fn add_entry(&mut self, node: &Rc<RefCell<Node>>) {
         let wrapped_name = ISO_8859_1.encode(node.borrow().name.as_str(), EncoderTrap::Strict);
         assert!(
@@ -357,7 +357,7 @@ impl ChainedHashMap {
         self.buckets[bucket].push(node.clone());
     }
 
-    /// Retrieves a child node whose name matches the given string.
+    /// Retrieve a child node whose name matches the given string.
     ///
     /// This function will return an optional cloned counted reference to the
     /// node matching the input string.
@@ -381,7 +381,7 @@ impl ChainedHashMap {
     // TODO: Figure out how to maintain reference counting without RefCell
     //       mutability capabilities for the nodes.
 
-    /// Iterates through all the child nodes, in no specific order.
+    /// Iterate through all the child nodes, in no specific order.
     ///
     /// The iterator allows for no explicit modification, as changes in the node
     /// name may change its destination bucket.
@@ -389,7 +389,7 @@ impl ChainedHashMap {
         self.buckets.iter().flatten()
     }
 
-    /// Iterates through all the buckets that make up the hash map.
+    /// Iterate through all the buckets that make up the hash map.
     ///
     /// The iterator allows for no explicit modification, as modification of
     /// contained nodes may change the nodes' destination bucket.

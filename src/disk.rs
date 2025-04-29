@@ -84,7 +84,7 @@ fn read_boot_block(path: &PathBuf) -> Result<Option<Vec<u8>>, Error> {
     Ok(Some(buffer))
 }
 
-/// Build a vaild Amiga DOS boot block with the given boot code, if any.
+/// Build a valid Amiga DOS boot block with the given boot code, if any.
 ///
 /// The boot block data is ready to be written to the disk image, with checksum
 /// and all.
@@ -238,7 +238,7 @@ impl DiskBlock {
 
     /// Get the disk block payload.
     ///
-    /// To write in the payload bufffer, look at [`DiskBlock::write_longword`]
+    /// To write in the payload buffer, look at [`DiskBlock::write_longword`]
     /// and [`DiskBlock::write_buffer`].
     pub(crate) fn payload(&self) -> &[u8] {
         &self.payload
@@ -371,7 +371,7 @@ impl DiskBlock {
     /// The checksum is simply the 32-bits 2's complement of the sum of all
     /// bytes present in the block.  For its correct calculation, this function
     /// must be run **before** the checksum is written to the disk block.  Leave
-    /// the checksum field filled with zeroes before calling this function and
+    /// the checksum field filled with zeroes before calling this function, and
     /// it will just work.
     pub(crate) fn compute_checksum(&mut self) -> u32 {
         0u32.wrapping_sub(
@@ -398,7 +398,7 @@ impl DiskBlock {
         self.needs_checksum = true;
     }
 
-    /// Prepares an hex dump of the disk block image.
+    /// Prepares a hex dump of the disk block image.
     ///
     /// # Examples
     ///

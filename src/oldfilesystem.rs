@@ -28,8 +28,8 @@ const DATA_BLOCK_PAYLOAD_SIZE: usize = DISK_BLOCK_SIZE - (mem::size_of::<u32>() 
 /// header but without the computed checksum for the whole block.
 ///
 /// If an invalid payload block is passed to this function (either empty or too
-/// large), a panic will raised.  This function is not meant to be invoked
-/// outside a file allocation context, so some failsafes are not put in place.
+/// large), a panic will be raised.  This function is not meant to be invoked
+/// outside a file allocation context, so some fail-safes are not put in place.
 fn build_data_block(
     block_number: u32,
     next_block_number: Option<u32>,

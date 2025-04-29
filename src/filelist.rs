@@ -401,7 +401,7 @@ fn parse_timestamp(field: Option<&str>, line: u64) -> Result<Option<DateStamp>, 
 /// - optional timestamp in
 ///   [RFC3339 format](https://www.rfc-editor.org/rfc/rfc3339.html)
 ///
-/// Valid entry rows are then wrapped into [`DiskEntry`] structurs, meant to be
+/// Valid entry rows are then wrapped into [`DiskEntry`] structures, meant to be
 /// added to a disk image via [`crate::DiskImageBuilder::add_entry`].
 ///
 /// # Errors

@@ -203,7 +203,7 @@ impl BCPLString {
         .concat()
     }
 
-    /// Extracts a string slice containing the entire underlying [`String`].
+    /// Extract a string slice containing the entire underlying [`String`].
     pub(crate) fn as_str(&self) -> &str {
         self.0.as_str()
     }
@@ -269,7 +269,7 @@ pub(crate) fn build_bcpl_string(
 
 /// Return the Amiga OS epoch timestamp.
 ///
-/// Amiga OS uses January 1st, 1978 at midnight as its epoch.  However it is not
+/// Amiga OS uses January 1st, 1978 at midnight as its epoch, however it is not
 /// specified which time zone it is supposed to be used with said epoch.  For
 /// the sake of simplicity, it is assumed that the epoch timestamp is based on
 /// the UTC time zone.
@@ -310,7 +310,7 @@ fn delta_to_vec(delta: Duration) -> Vec<u8> {
 
 /// `DateStamp` timestamp wrapper.
 ///
-/// Amiga OS represents timestamps in an unique way.  It still keeps track of
+/// Amiga OS represents timestamps in a unique way.  It still keeps track of
 /// time instants as the distance between a chosen epoch (midnight of January
 /// 1st, 1978) like other operating systems out there, but the in-memory
 /// representation is not seen anywhere else.
@@ -470,7 +470,7 @@ impl fmt::UpperHex for ProtectionBits {
 impl FromStr for ProtectionBits {
     type Err = Error;
 
-    /// Converts the given string into a [`ProtectionBits`] instance.
+    /// Convert the given string into a [`ProtectionBits`] instance.
     ///
     /// The string format must look something like `----RWED`, with the first
     /// four characters being `-`, and the last four be either the ones shown or

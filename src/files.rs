@@ -178,8 +178,8 @@ pub(crate) fn allocate_file_blocks(
 /// Build file metadata blocks for the given node.
 ///
 /// Build metadata using the given pre-allocated block numbers for both metadata
-/// and payload blocks.  Those preallocated block numbers cover both metadata
-/// and data block sequences, or an assertion will trigger, terminating the
+/// and payload blocks.  Those pre-allocated block numbers cover both metadata
+/// and data block sequences, or an assertion will trigger - terminating the
 /// program.
 pub(crate) fn build_file_metadata_blocks(
     node: &Rc<RefCell<Node>>,
