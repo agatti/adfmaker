@@ -14,7 +14,7 @@ use log::{debug, error};
 
 use crate::{
     amigaostypes::{BCPLString, DateStamp, ProtectionBits, build_bcpl_string},
-    common::{Error, MAXIMUM_COMMENT_LENGTH, MAXIMUM_FILE_SIZE, MAXIMUM_NAME_LENGTH},
+    common::{Error, MAXIMUM_COMMENT_LENGTH, MAXIMUM_NAME_LENGTH},
 };
 
 #[doc(hidden)]
@@ -227,7 +227,11 @@ fn parse_target_path(field: Option<&str>, line: u64) -> Result<String, Error> {
 ///
 /// The function will return [`Error::InvalidFileList`] if the file name is
 /// invalid.
-fn parse_source_path(field: Option<&str>, line: u64) -> Result<Option<(PathBuf, Vec<u8>)>, Error> {
+fn parse_source_path(
+    field: Option<&str>,
+    line: u64,
+    maximum_size: u64,
+) -> Result<Option<(PathBuf, Vec<u8>)>, Error> {
     if let Some(path) = field {
         if path.is_empty() {
             return Ok(None);
@@ -269,7 +273,7 @@ fn parse_source_path(field: Option<&str>, line: u64) -> Result<Option<(PathBuf, 
             return Err(Error::InvalidSourcePath(path.to_owned()));
         }
         let size = metadata.len();
-        if size > MAXIMUM_FILE_SIZE {
+        if size > maximum_size {
             report_parse_error!(
                 line,
                 "source path file \"{}\" too big ({} bytes).",
@@ -404,7 +408,7 @@ fn parse_timestamp(field: Option<&str>, line: u64) -> Result<Option<DateStamp>, 
 ///
 /// The function will return [`Error::InvalidFileList`] if one or more entries
 /// are invalid.
-pub(crate) fn read_file_list<R>(reader: &mut R) -> Result<Vec<DiskEntry>, Error>
+pub(crate) fn read_file_list<R>(reader: &mut R, maximum_size: u64) -> Result<Vec<DiskEntry>, Error>
 where
     R: Read,
 {
@@ -447,12 +451,13 @@ where
             }
         }
         names_set.insert(normalised_name);
-        let (source_path, contents) =
-            if let Some((source_path, contents)) = parse_source_path(record.get(1), line)? {
-                (Some(source_path), Some(contents))
-            } else {
-                (None, None)
-            };
+        let (source_path, contents) = if let Some((source_path, contents)) =
+            parse_source_path(record.get(1), line, maximum_size)?
+        {
+            (Some(source_path), Some(contents))
+        } else {
+            (None, None)
+        };
 
         let entry = DiskEntry {
             target_path,

@@ -29,7 +29,7 @@ use crate::{
     directories::{allocate_directories, build_root_block, write_directory_hash_table},
     filelist::DiskEntry,
     files::allocate_files,
-    filesystem::{DirectoryIterator, Node},
+    filesystem::{DirectoryIterator, FileSystemInternal, Node},
 };
 
 /// The raw amount of bytes taken by the boot block.
@@ -88,7 +88,7 @@ fn read_boot_block(path: &PathBuf) -> Result<Option<Vec<u8>>, Error> {
 ///
 /// The boot block data is ready to be written to the disk image, with checksum
 /// and all.
-fn build_boot_block(boot_code: Option<Vec<u8>>) -> Vec<u8> {
+pub(crate) fn create_boot_block(boot_code: Option<Vec<u8>>, r#type: u8) -> Vec<u8> {
     /*
 
      0                   1                   2                   3
@@ -113,13 +113,23 @@ fn build_boot_block(boot_code: Option<Vec<u8>>) -> Vec<u8> {
 
     */
 
+    assert!(
+        (r#type & 0b1111_1000) == 0
+            && if r#type & 0b0000_0001 == 0 {
+                r#type & 0b0000_0110 == 0
+            } else {
+                true
+            },
+        "Invalid boot block type: {type:02X}"
+    );
+
     // All calls to `unwrap()` are not checked, as those write operations are
     // guaranteed to succeed.  If they fail, either a bug in `Cursor` was hit
     // or the value of `BOOT_BLOCK_SIZE` is invalid.  In either case raising a
     // panic is the appropriate action, as there is no chance of recovery.
 
     let mut cursor = Cursor::new(vec![0u8; BOOT_BLOCK_SIZE]);
-    cursor.write_all(&[b'D', b'O', b'S', 0]).unwrap();
+    cursor.write_all(&[b'D', b'O', b'S', r#type]).unwrap();
     cursor.set_position((mem::size_of::<u32>() * 2) as u64);
     cursor.write_all(&ROOT_BLOCK_NUMBER.to_be_bytes()).unwrap();
     if let Some(boot_code) = boot_code {
@@ -193,13 +203,15 @@ fn calculate_longword_offset(offset: isize) -> (usize, usize, usize) {
     )
 }
 
-/// Struct representing a single block that is part of an OFS disk image.
+/// Struct representing a single block that is part of a disk image.
 #[derive(Clone)]
 pub(crate) struct DiskBlock {
     /// The block index.
     index: u32,
     /// The block contents.
     payload: [u8; DISK_BLOCK_SIZE],
+    /// Flag indicating whether a checksum is mandatory.
+    needs_checksum: bool,
 }
 
 impl DiskBlock {
@@ -208,13 +220,14 @@ impl DiskBlock {
     /// # Errors
     ///
     /// The function will return [`Error::BitmapBlockOutOfRange`] if the index
-    /// is past the range an OFS double density disk image allows.
+    /// is past the range a double density disk image allows.
     pub(crate) fn new(index: u32) -> Result<Self, Error> {
         check_block_number(index)?;
 
         Ok(Self {
             index,
             payload: [0u8; DISK_BLOCK_SIZE],
+            needs_checksum: false,
         })
     }
 
@@ -351,10 +364,9 @@ impl DiskBlock {
 
     /// Calculate the block checksum.
     ///
-    /// All OFS blocks with a checksum share the same algorithm (except for the
-    /// Boot block and the Bitmap block); file and directory blocks always store
-    /// said checksum at the same location (offset $14 of the block or longword
-    /// #5).
+    /// All blocks with a checksum share the same algorithm (except for the Boot
+    /// and the Bitmap blocks); file and directory blocks always store said
+    /// checksum at the same location (offset $14 of the block or longword #5).
     ///
     /// The checksum is simply the 32-bits 2's complement of the sum of all
     /// bytes present in the block.  For its correct calculation, this function
@@ -368,6 +380,22 @@ impl DiskBlock {
                 .map(|chunk| u32::from_be_bytes(chunk.try_into().unwrap()))
                 .fold(0u32, u32::wrapping_add),
         )
+    }
+
+    /// Return whether the current disk block needs its checksum computed.
+    ///
+    /// This indicates whether this block needs to have a its checksum computed
+    /// and written at offset $14.  On OFS, all blocks except for the boot block
+    /// and the root blocks need a checksum computed and put at offset $14.  FFS
+    /// still requires them but file data blocks must not have that checksum
+    /// written.
+    pub(crate) fn is_checksum_needed(&self) -> bool {
+        self.needs_checksum
+    }
+
+    /// Mark the block as needing a checksum computed and stored.
+    pub(crate) fn needs_checksum(&mut self) {
+        self.needs_checksum = true;
     }
 
     /// Prepares an hex dump of the disk block image.
@@ -419,23 +447,26 @@ fn check_blocks_allocation_state(
     }
 }
 
-/// OFS Disk Image builder.
-pub(crate) struct DiskImageBuilder {
+/// Amiga Disk Image builder.
+pub(crate) struct DiskImageBuilder<'a> {
     /// The disk name used by the operating system.
     name: BCPLString,
     /// An optional [`Vec<u8>`] with the data to put in the disk's boot block.
     boot_code: Option<Vec<u8>>,
     /// The filesystem node representing the root directory.
     root: Rc<RefCell<Node>>,
+    /// The filesystem-specific implementation provider.
+    filesystem: &'a dyn FileSystemInternal,
 }
 
-impl DiskImageBuilder {
+impl<'a> DiskImageBuilder<'a> {
     /// Create a [`DiskImageBuilder`] with no data.
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(filesystem: &'a dyn FileSystemInternal) -> Self {
         Self {
             name: BCPLString::default(),
             boot_code: None,
             root: Rc::new(RefCell::new(Node::root())),
+            filesystem,
         }
     }
 
@@ -470,7 +501,7 @@ impl DiskImageBuilder {
     /// The function will return [`Error::InputOutput`] if there was an error
     /// reading the boot block file (as in, I/O read error, file not found,
     /// etc.), or [`Error::BootCodeTooLarge`] if the given file does not fit
-    /// in the amount of space allocated for an OFS boot block.
+    /// in the amount of space allocated for a boot block.
     pub(crate) fn set_boot_block(&mut self, path: Option<PathBuf>) -> Result<&mut Self, Error> {
         if path.is_some() {
             self.boot_code = read_boot_block(&path.unwrap())?;
@@ -516,7 +547,7 @@ impl DiskImageBuilder {
         let mut bitmap_allocator = BitmapAllocator::new();
         let mut cursor = Cursor::new(vec![0u8; BLOCKS_PER_IMAGE * DISK_BLOCK_SIZE]);
         cursor
-            .write_all(&build_boot_block(self.boot_code.clone()))
+            .write_all(&self.filesystem.build_boot_block(self.boot_code.clone()))
             .unwrap();
 
         let mut blocks: HashMap<u32, DiskBlock> = HashMap::new();
@@ -561,7 +592,7 @@ impl DiskImageBuilder {
                 "Adding files for \"{}\".",
                 directory.borrow().absolute_path()
             );
-            for file_block in allocate_files(&directory, &mut bitmap_allocator)? {
+            for file_block in allocate_files(&directory, &mut bitmap_allocator, self.filesystem)? {
                 assert!(
                     !blocks.contains_key(&file_block.index()),
                     "Disk block #{} seen more than once.",
@@ -583,14 +614,16 @@ impl DiskImageBuilder {
         debug!("Hash tables written.");
         check_blocks_allocation_state(&bitmap_allocator, &blocks);
 
-        // Step 5. Compute checksums for all blocks, as all blocks built so far
-        // need their checksum set at offset $14.
+        // Step 5. Compute checksums at offset $14 for all blocks that need it.
 
         debug!("Computing block checksums.");
-        for block in blocks.values_mut() {
-            let checksum = block.compute_checksum();
-            block.write_longword(5, "checksum", checksum);
-        }
+        blocks
+            .values_mut()
+            .filter(|block| block.is_checksum_needed())
+            .for_each(|block| {
+                let checksum = block.compute_checksum();
+                block.write_longword(5, "checksum", checksum);
+            });
         debug!("Block checksums computed.");
         check_blocks_allocation_state(&bitmap_allocator, &blocks);
 

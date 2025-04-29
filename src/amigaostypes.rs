@@ -22,50 +22,86 @@ macro_rules! report_bcpl_string_error {
     };
 }
 
-/// The two states the `Delete` bit can have in a [`ProtectionBits`] instance.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) enum DeleteBit {
-    /// The file or directory can be deleted.
-    Allowed,
-    /// The file or directory can not be deleted.
-    NotAllowed,
+#[doc(hidden)]
+macro_rules! ProtectionBitTryFrom {
+    ($name: ident, $flag:expr, notinverted) => {
+        impl TryFrom<char> for $name {
+            type Error = Error;
+
+            fn try_from(value: char) -> Result<Self, Self::Error> {
+                match value {
+                    $flag => Ok($name::Set),
+                    '-' => Ok($name::NotSet),
+                    _ => Err(Error::InvalidProtectionBitsString(value.to_string())),
+                }
+            }
+        }
+    };
+    ($name: ident, $flag:expr, inverted) => {
+        impl TryFrom<char> for $name {
+            type Error = Error;
+
+            fn try_from(value: char) -> Result<Self, Self::Error> {
+                match value {
+                    $flag => Ok($name::NotSet),
+                    '-' => Ok($name::Set),
+                    _ => Err(Error::InvalidProtectionBitsString(value.to_string())),
+                }
+            }
+        }
+    };
 }
 
-/// The two states the `Execute` bit can have in a [`ProtectionBits`] instance.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ExecuteBit {
-    /// The file can be executed.
-    Allowed,
-    /// The file can not be executed.
-    NotAllowed,
+#[doc(hidden)]
+macro_rules! ProtectionBitDisplay {
+    ($name: ident, $flag:expr, notinverted) => {
+        impl fmt::Display for $name {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(
+                    formatter,
+                    "{}",
+                    if *self == $name::Set { $flag } else { '-' }
+                )
+            }
+        }
+    };
+    ($name: ident, $flag:expr, inverted) => {
+        impl fmt::Display for $name {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(
+                    formatter,
+                    "{}",
+                    if *self == $name::Set { '-' } else { $flag }
+                )
+            }
+        }
+    };
 }
 
-/// The two states the `Write` bit can have in a [`ProtectionBits`] instance.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) enum WriteBit {
-    /// The file or directory can be written to.
-    Allowed,
-    /// The file or directory can not be written to.
-    NotAllowed,
+#[doc(hidden)]
+macro_rules! ProtectionBit {
+    ($name: ident, $flag_character:expr, $inverted:tt) => {
+        #[doc = concat!("The two states the `", stringify!($name), "` bit can have in a [`ProtectionBits`] instance.")]
+        #[derive(Clone, Debug, PartialEq)]
+        pub(crate) enum $name {
+            /// The protection bit is set.
+            Set,
+            /// The protection bit is not set.
+            NotSet,
+        }
+
+        ProtectionBitTryFrom!($name, $flag_character, $inverted);
+        ProtectionBitDisplay!($name, $flag_character, $inverted);
+    };
 }
 
-/// The two states the `Read` bit can have in a [`ProtectionBits`] instance.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ReadBit {
-    /// The file or directory can be read from.
-    Allowed,
-    /// The file or directory can not be read from.
-    NotAllowed,
-}
-
-/// The two states the `Changed` bit can have in a [`ProtectionBits`] instance.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ChangeBit {
-    /// The file or directory has not changed since the last backup.
-    NotChanged,
-    /// The file or directory has changed since the last backup.
-    Changed,
-}
+ProtectionBit!(ScriptBit, 's', inverted);
+ProtectionBit!(PureBit, 'p', inverted);
+ProtectionBit!(ArchiveBit, 'a', inverted);
+ProtectionBit!(ReadBit, 'r', notinverted);
+ProtectionBit!(WriteBit, 'w', notinverted);
+ProtectionBit!(ExecuteBit, 'e', notinverted);
+ProtectionBit!(DeleteBit, 'd', notinverted);
 
 /// DOS longword type indicating a metadata block.
 pub(crate) const T_SHORT: u32 = 2;
@@ -349,12 +385,18 @@ impl fmt::Display for DateStamp {
 /// Amiga file object protection bits.
 ///
 /// This is a collection of five flags representing the access permissions that
-/// filesystem objects can have in Amiga OS OFS.  The permission bits are:
+/// objects can have both in Amiga OS OFS and FFS filesystems.  The permission
+/// bits are:
 ///
-/// - Changed: if set, the file was changed since the last backup, not really
-///            used except for backup applications
-/// - Read: if set, the file or directory can be read from by Amiga OS
-/// - Write: if set, the file or directory can be written to by Amiga OS
+/// - Script: if set, the file is an executable script file
+/// - Pure: if set, the file is reentrant and reexecutable; this is specific for
+///         executable files
+/// - Archived: if set, the file was changed since the last backup, not really
+///             used except for backup applications
+/// - Read: if set, the file or directory can be read from by Amiga OS, this is
+///         ignored by the target OFS filesystem
+/// - Write: if set, the file or directory can be written to by Amiga OS, this
+///          is ignored by the target OFS filesystem
 /// - Execute: if set, the file can be executed by Amiga OS
 /// - Delete: if set, the file or directory can be deleted by Amiga OS.
 ///
@@ -366,7 +408,9 @@ impl fmt::Display for DateStamp {
 /// convenience function to convert an instance to an [`u32`] is provided.
 #[derive(Clone, Debug)]
 pub(crate) struct ProtectionBits {
-    changed: ChangeBit,
+    script: ScriptBit,
+    pure: PureBit,
+    archive: ArchiveBit,
     read: ReadBit,
     write: WriteBit,
     execute: ExecuteBit,
@@ -381,11 +425,13 @@ impl From<ProtectionBits> for u32 {
 
 impl From<&ProtectionBits> for u32 {
     fn from(bits: &ProtectionBits) -> Self {
-        let mut value = u32::from(bits.changed == ChangeBit::NotChanged) << 4;
-        value |= u32::from(bits.read == ReadBit::NotAllowed) << 3;
-        value |= u32::from(bits.write == WriteBit::NotAllowed) << 2;
-        value |= u32::from(bits.execute == ExecuteBit::NotAllowed) << 1;
-        value |= u32::from(bits.delete == DeleteBit::NotAllowed);
+        let mut value = u32::from(bits.script == ScriptBit::NotSet) << 6;
+        value |= u32::from(bits.pure == PureBit::NotSet) << 5;
+        value |= u32::from(bits.archive == ArchiveBit::NotSet) << 4;
+        value |= u32::from(bits.read == ReadBit::NotSet) << 3;
+        value |= u32::from(bits.write == WriteBit::NotSet) << 2;
+        value |= u32::from(bits.execute == ExecuteBit::NotSet) << 1;
+        value |= u32::from(bits.delete == DeleteBit::NotSet);
 
         value
     }
@@ -394,11 +440,13 @@ impl From<&ProtectionBits> for u32 {
 impl Default for ProtectionBits {
     fn default() -> Self {
         Self {
-            changed: ChangeBit::Changed,
-            read: ReadBit::Allowed,
-            write: WriteBit::Allowed,
-            execute: ExecuteBit::Allowed,
-            delete: DeleteBit::Allowed,
+            script: ScriptBit::Set,
+            pure: PureBit::Set,
+            archive: ArchiveBit::Set,
+            read: ReadBit::Set,
+            write: WriteBit::Set,
+            execute: ExecuteBit::Set,
+            delete: DeleteBit::Set,
         }
     }
 }
@@ -407,27 +455,8 @@ impl fmt::Display for ProtectionBits {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "----{}{}{}{}",
-            if self.read == ReadBit::Allowed {
-                "r"
-            } else {
-                "-"
-            },
-            if self.write == WriteBit::Allowed {
-                "w"
-            } else {
-                "-"
-            },
-            if self.execute == ExecuteBit::Allowed {
-                "e"
-            } else {
-                "-"
-            },
-            if self.delete == DeleteBit::Allowed {
-                "d"
-            } else {
-                "-"
-            },
+            "-{}{}{}{}{}{}{}",
+            self.script, self.pure, self.archive, self.read, self.write, self.execute, self.delete
         )
     }
 }
@@ -471,42 +500,20 @@ impl FromStr for ProtectionBits {
         }
 
         let trimmed = string.trim().to_lowercase();
-        if trimmed.len() != 8 || !trimmed.starts_with("----") {
+        if trimmed.len() != 8 || !trimmed.starts_with('-') {
             return Err(Error::InvalidProtectionBitsString(string.to_owned()));
         }
 
-        let mut characters = trimmed[4..trimmed.len()].chars();
-
-        let read = match characters.nth(0).unwrap() {
-            'r' => ReadBit::Allowed,
-            '-' => ReadBit::NotAllowed,
-            _ => return Err(Error::InvalidProtectionBitsString(string.to_owned())),
-        };
-
-        let write = match characters.nth(0).unwrap() {
-            'w' => WriteBit::Allowed,
-            '-' => WriteBit::NotAllowed,
-            _ => return Err(Error::InvalidProtectionBitsString(string.to_owned())),
-        };
-
-        let execute = match characters.nth(0).unwrap() {
-            'e' => ExecuteBit::Allowed,
-            '-' => ExecuteBit::NotAllowed,
-            _ => return Err(Error::InvalidProtectionBitsString(string.to_owned())),
-        };
-
-        let delete = match characters.nth(0).unwrap() {
-            'd' => DeleteBit::Allowed,
-            '-' => DeleteBit::NotAllowed,
-            _ => return Err(Error::InvalidProtectionBitsString(string.to_owned())),
-        };
+        let mut characters = trimmed[1..trimmed.len()].chars();
 
         Ok(ProtectionBits {
-            changed: ChangeBit::Changed,
-            read,
-            write,
-            execute,
-            delete,
+            script: characters.next().unwrap().try_into()?,
+            pure: characters.next().unwrap().try_into()?,
+            archive: characters.next().unwrap().try_into()?,
+            read: characters.next().unwrap().try_into()?,
+            write: characters.next().unwrap().try_into()?,
+            execute: characters.next().unwrap().try_into()?,
+            delete: characters.next().unwrap().try_into()?,
         })
     }
 }

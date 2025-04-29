@@ -35,7 +35,10 @@ use std::{
 };
 
 use clap::Parser;
+use fastfilesystem::FastFileSystem;
+use filesystem::FileSystemInternal;
 use log::info;
+use oldfilesystem::OldFileSystem;
 
 use crate::{disk::DiskImageBuilder, filelist::read_file_list};
 
@@ -44,9 +47,20 @@ mod amigaostypes;
 mod common;
 mod directories;
 mod disk;
+mod fastfilesystem;
 mod filelist;
 mod files;
 mod filesystem;
+mod oldfilesystem;
+
+/// Available filesystem providers.
+#[derive(clap::ValueEnum, Clone, Debug)]
+enum FileSystemType {
+    /// Old File System (OFS).
+    Ofs,
+    /// Fast File System (FFS).
+    Ffs,
+}
 
 #[derive(Parser)]
 struct CommandLine {
@@ -60,6 +74,8 @@ struct CommandLine {
     bootblock: Option<PathBuf>,
     #[clap(short, long)]
     file_list: PathBuf,
+    #[clap(short, long)]
+    r#type: FileSystemType,
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -75,12 +91,21 @@ fn main() -> Result<(), anyhow::Error> {
         "Parsing files list from {}.",
         command_line.file_list.display()
     );
+
+    let filesystem: Box<dyn FileSystemInternal> = match command_line.r#type {
+        FileSystemType::Ofs => Box::new(OldFileSystem::new()),
+        FileSystemType::Ffs => Box::new(FastFileSystem::new()),
+    };
+
     let list_file = File::open(command_line.file_list)?;
-    let mut builder = DiskImageBuilder::new();
+    let mut builder = DiskImageBuilder::new(&*filesystem);
     builder
         .set_name(command_line.disk_name.as_str())?
         .set_boot_block(command_line.bootblock)?;
-    for entry in read_file_list(&mut BufReader::new(list_file))? {
+    for entry in read_file_list(
+        &mut BufReader::new(list_file),
+        filesystem.maximum_file_size(),
+    )? {
         builder.add_entry(&entry);
     }
 

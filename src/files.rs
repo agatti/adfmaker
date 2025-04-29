@@ -6,20 +6,17 @@
 
 //! File-related filesystem manipulation functions.
 
-use std::{cell::RefCell, mem, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 use log::{debug, trace};
 
 use crate::{
     allocator::{BitmapAllocator, check_block_number},
-    amigaostypes::{BCPLString, ST_FILE, T_DATA, T_LIST, T_SHORT},
-    common::{DATA_BLOCKS_COUNT, DISK_BLOCK_SIZE, Error},
+    amigaostypes::{BCPLString, ST_FILE, T_LIST, T_SHORT},
+    common::{DATA_BLOCKS_COUNT, Error},
     disk::DiskBlock,
-    filesystem::{Node, NodeKind},
+    filesystem::{FileSystemInternal, Node, NodeKind},
 };
-
-/// Effective payload size that can fit a file data block.
-const DATA_BLOCK_PAYLOAD_SIZE: usize = DISK_BLOCK_SIZE - (mem::size_of::<u32>() * 6);
 
 /// Allocate all direct children of the given directory.
 ///
@@ -31,6 +28,7 @@ const DATA_BLOCK_PAYLOAD_SIZE: usize = DISK_BLOCK_SIZE - (mem::size_of::<u32>() 
 pub(crate) fn allocate_files(
     directory: &Rc<RefCell<Node>>,
     bitmap_allocator: &mut BitmapAllocator,
+    filesystem: &dyn FileSystemInternal,
 ) -> Result<Vec<DiskBlock>, Error> {
     debug!(
         "Allocating files for directory \"{}\".",
@@ -56,7 +54,7 @@ pub(crate) fn allocate_files(
             continue;
         }
         debug!("File node found, allocating.");
-        for block in allocate_file(child, bitmap_allocator)? {
+        for block in allocate_file(child, bitmap_allocator, filesystem)? {
             blocks.push(block);
         }
     }
@@ -73,6 +71,7 @@ pub(crate) fn allocate_files(
 fn allocate_file(
     node: &Rc<RefCell<Node>>,
     bitmap_allocator: &mut BitmapAllocator,
+    filesystem: &dyn FileSystemInternal,
 ) -> Result<Vec<DiskBlock>, Error> {
     assert!(
         node.borrow().parent().is_some(),
@@ -100,10 +99,10 @@ fn allocate_file(
         contents.len()
     );
     let (header_block_numbers, data_block_numbers) =
-        allocate_file_blocks(contents.len(), bitmap_allocator)?;
+        filesystem.allocate_file_blocks(contents.len(), bitmap_allocator)?;
     let disk_blocks = [
         build_file_metadata_blocks(node, &header_block_numbers, &data_block_numbers),
-        build_data_blocks(&data_block_numbers, contents),
+        filesystem.build_data_blocks(&data_block_numbers, contents),
     ]
     .concat();
 
@@ -135,14 +134,15 @@ fn allocate_file(
 /// either [`Error::DiskFull`] in case it is known there are not enough free
 /// blocks at all, or [`Error::EndOfBitmapReached`] if there are enough free
 /// blocks in the image but not enough when using the chosen starting point.
-fn allocate_file_blocks(
+pub(crate) fn allocate_file_blocks(
     contents_size: usize,
     bitmap_allocator: &mut BitmapAllocator,
+    data_block_size: usize,
 ) -> Result<(Vec<u32>, Vec<u32>), Error> {
     debug!("Allocating blocks to fit {contents_size} bytes.");
 
     let data_blocks_needed = if contents_size > 0 {
-        contents_size.div_ceil(DATA_BLOCK_PAYLOAD_SIZE)
+        contents_size.div_ceil(data_block_size)
     } else {
         0
     };
@@ -175,134 +175,13 @@ fn allocate_file_blocks(
     Ok((header_block_numbers, data_block_numbers))
 }
 
-/// Build a file data block.
-///
-/// Build a block containing part of the file contents, along with the block
-/// header but without the computed checksum for the whole block.
-///
-/// If an invalid payload block is passed to this function (either empty or too
-/// large), a panic will raised.  This function is not meant to be invoked
-/// outside a file allocation context, so some failsafes are not put in place.
-fn build_data_block(
-    block_number: u32,
-    next_block_number: Option<u32>,
-    sequence_number: u32,
-    payload: &[u8],
-) -> DiskBlock {
-    assert!(
-        !payload.is_empty() && payload.len() <= DATA_BLOCK_PAYLOAD_SIZE,
-        "Invalid payload size ({} bytes).",
-        payload.len()
-    );
-
-    /*
-
-     0                   1                   2                   3
-     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    |                        Type ($00000008)                       |   +0
-    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    |                          Own block #                          |   +1
-    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    |               Sequence number (starting from 1)               |   +2
-    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    |                      Data size (in bytes)                     |   +3
-    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    |           Next sequence block # (or 0 if last block)          |   +4
-    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    |                         Block checksum                        |   +5
-    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    |                                                               |
-    +                         Data payload *                        +   +6
-    |                                                               |
-    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-    * Data payload block not to scale.
-
-     */
-
-    let mut disk_block = DiskBlock::new(block_number).unwrap();
-    disk_block.write_longword(0, "type", T_DATA);
-    disk_block.write_longword(1, "block number", block_number);
-    disk_block.write_longword(2, "sequence number", sequence_number);
-    // Payload length is already checked earlier.
-    #[allow(clippy::cast_possible_truncation)]
-    disk_block.write_longword(3, "payload length", payload.len() as u32);
-    disk_block.write_longword(
-        4,
-        "next block pointer",
-        *next_block_number.as_ref().unwrap_or(&0),
-    );
-    disk_block.write_buffer(6, "payload", payload);
-    trace!("Dumping block data before checksum calculation:");
-    disk_block.dump().iter().for_each(|line| trace!("{line}"));
-
-    disk_block
-}
-
-/// Build file data blocks for the whole given payload.
-///
-/// Build data blocks using the given pre-allocated block numbers.  The number
-/// of preallocated numbers must cover the whole payload blocks sequence or an
-/// assertion will trigger, terminating the program.
-pub(crate) fn build_data_blocks(block_numbers: &[u32], contents: &[u8]) -> Vec<DiskBlock> {
-    debug!(
-        "Building {} data block() covering {} byte(s) with blocks: [{}].",
-        block_numbers.len(),
-        contents.len(),
-        block_numbers
-            .iter()
-            .map(|block| format!("#{block}"))
-            .collect::<Vec<String>>()
-            .join(", ")
-    );
-
-    assert!(
-        block_numbers
-            .iter()
-            .all(|block| check_block_number(*block).is_ok()),
-        "One or more block numbers are invalid."
-    );
-    let mut blocks: Vec<DiskBlock> = vec![];
-
-    let mut peekable_block_numbers = block_numbers.iter().peekable();
-    for (sequence_number, chunk) in (1u32..).zip(contents.chunks(DATA_BLOCK_PAYLOAD_SIZE)) {
-        let wrapped_block_number = peekable_block_numbers.next().copied();
-        assert!(
-            wrapped_block_number.is_some(),
-            "Sequence block #{sequence_number} was requested after running out of data block numbers."
-        );
-        let block_number = wrapped_block_number.unwrap();
-        let next_block_number = peekable_block_numbers.peek().map(|block| **block);
-        debug!(
-            "Building sequence block #{}/{} located at disk block #{} followed by disk block {}.",
-            sequence_number,
-            block_numbers.len(),
-            block_number,
-            next_block_number.map_or("N/A (end of sequence reached)".into(), |block| format!(
-                "#{block}"
-            ))
-        );
-        blocks.push(build_data_block(
-            block_number,
-            next_block_number,
-            sequence_number,
-            chunk,
-        ));
-        debug!("Block #{}/{} built.", sequence_number, block_numbers.len());
-    }
-
-    debug!("Successfully built {} block(s).", blocks.len());
-    blocks
-}
-
 /// Build file metadata blocks for the given node.
 ///
 /// Build metadata using the given pre-allocated block numbers for both metadata
 /// and payload blocks.  Those preallocated block numbers cover both metadata
 /// and data block sequences, or an assertion will trigger, terminating the
 /// program.
-fn build_file_metadata_blocks(
+pub(crate) fn build_file_metadata_blocks(
     node: &Rc<RefCell<Node>>,
     header_block_numbers: &[u32],
     data_block_numbers: &[u32],
@@ -555,6 +434,7 @@ fn build_file_header_block(
     );
     disk_block.write_longword(-2, "extension block pointer", next_block.unwrap_or(0));
     disk_block.write_longword(-1, "secondary type", ST_FILE);
+    disk_block.needs_checksum();
 
     trace!("Dumping file list block in its current form:");
     disk_block.dump().iter().for_each(|line| trace!("{line}"));

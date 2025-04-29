@@ -30,11 +30,8 @@ pub const MAXIMUM_COMMENT_LENGTH: usize = 80;
 const SIDES_PER_IMAGE: usize = 2;
 /// How many blocks are available on a single disk image side.
 const BLOCKS_PER_SIDE: usize = 880;
-/// How many blocks a double sided, double density OFS disk image can hold.
+/// How many blocks a double sided, double density disk image can hold.
 pub const BLOCKS_PER_IMAGE: usize = SIDES_PER_IMAGE * BLOCKS_PER_SIDE;
-
-/// The biggest size a file can have in an OFS double density disk image.
-pub const MAXIMUM_FILE_SIZE: u64 = 845_216;
 
 /// Error definitions used in the whole project.
 #[derive(thiserror::Error, Debug)]

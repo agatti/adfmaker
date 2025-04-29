@@ -204,6 +204,7 @@ pub(crate) fn build_root_block(disk_name: &BCPLString, root: &Rc<RefCell<Node>>)
     disk_block.write_buffer(-20, "disk name", &disk_name.to_vec());
     disk_block.write_buffer(-7, "creation timestamp", &DateStamp::default().to_vec());
     disk_block.write_longword(-1, "secondary type", ST_ROOT);
+    disk_block.needs_checksum();
 
     trace!("Dumping root block in its current form:");
     disk_block.dump().iter().for_each(|line| trace!("{line}"));
@@ -337,6 +338,7 @@ pub(crate) fn build_directory_block(
         borrowed_parent.borrow().block().unwrap(),
     );
     disk_block.write_longword(-1, "secondary type", ST_USERDIR);
+    disk_block.needs_checksum();
 
     trace!("Dumping directory block in its current form:");
     disk_block.dump().iter().for_each(|line| trace!("{line}"));

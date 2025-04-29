@@ -18,9 +18,10 @@ use encoding::{EncoderTrap, Encoding, all::ISO_8859_1};
 use log::{debug, trace};
 
 use crate::{
-    allocator::{FIRST_BLOCK, LAST_BLOCK},
+    allocator::{BitmapAllocator, FIRST_BLOCK, LAST_BLOCK},
     amigaostypes::{BCPLString, DateStamp, ProtectionBits, build_bcpl_string},
-    common::{self, HASH_TABLE_BUCKETS, MAXIMUM_NAME_LENGTH, ROOT_BLOCK_NUMBER},
+    common::{self, Error, HASH_TABLE_BUCKETS, MAXIMUM_NAME_LENGTH, ROOT_BLOCK_NUMBER},
+    disk::DiskBlock,
     filelist::DiskEntry,
 };
 
@@ -475,4 +476,42 @@ impl Iterator for DirectoryIterator {
 
         Some(emitted)
     }
+}
+
+/// Trait encapsulating filesystem-specific code.
+pub(crate) trait FileSystemInternal {
+    /// Return the maximum file size that can be stored in the filesystem.
+    fn maximum_file_size(&self) -> u64;
+
+    /// Build a vaild Amiga DOS boot block with the given boot code, if any.
+    ///
+    /// The boot block data is ready to be written to the disk image, with
+    /// checksum and all.
+    fn build_boot_block(&self, boot_code: Option<Vec<u8>>) -> Vec<u8>;
+
+    /// Allocate disk blocks for a file of the given size.
+    ///
+    /// This function will return a set of two blocks list, the first for the
+    /// file metadata, and the other for the file contents.  If the allocator
+    /// returns invalid block numbers the function will raise a panic and
+    /// terminate the program, as there is no chance of recovery at this point.
+    ///
+    /// # Errors
+    ///
+    /// If the allocator fails to claim enough blocks, the function will return
+    /// either [`Error::DiskFull`] in case it is known there are not enough free
+    /// blocks at all, or [`Error::EndOfBitmapReached`] if there are enough free
+    /// blocks in the image but not enough when using the chosen starting point.
+    fn allocate_file_blocks(
+        &self,
+        contents_size: usize,
+        bitmap_allocator: &mut BitmapAllocator,
+    ) -> Result<(Vec<u32>, Vec<u32>), Error>;
+
+    /// Build file data blocks for the whole given payload.
+    ///
+    /// Build data blocks using the given pre-allocated block numbers.  The
+    /// number of preallocated numbers must cover the whole payload blocks
+    /// sequence or an assertion will trigger, terminating the program.
+    fn build_data_blocks(&self, block_numbers: &[u32], contents: &[u8]) -> Vec<DiskBlock>;
 }
