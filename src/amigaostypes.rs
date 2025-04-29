@@ -24,27 +24,22 @@ macro_rules! report_bcpl_string_error {
 
 #[doc(hidden)]
 macro_rules! ProtectionBitTryFrom {
-    ($name: ident, $flag:expr, notinverted) => {
-        impl TryFrom<char> for $name {
-            type Error = Error;
-
-            fn try_from(value: char) -> Result<Self, Self::Error> {
-                match value {
-                    $flag => Ok($name::Set),
-                    '-' => Ok($name::NotSet),
-                    _ => Err(Error::InvalidProtectionBitsString(value.to_string())),
-                }
-            }
-        }
+    ($name:ident, $flag:expr, not_inverted) => {
+        ProtectionBitTryFrom!($name, $flag, false);
     };
-    ($name: ident, $flag:expr, inverted) => {
+    ($name:ident, $flag:expr, inverted) => {
+        ProtectionBitTryFrom!($name, $flag, true);
+    };
+    ($name:ident, $flag:expr, $inverted:expr) => {
         impl TryFrom<char> for $name {
             type Error = Error;
 
             fn try_from(value: char) -> Result<Self, Self::Error> {
-                match value {
-                    $flag => Ok($name::NotSet),
-                    '-' => Ok($name::Set),
+                match (value, $inverted) {
+                    ($flag, true) => Ok($name::NotSet),
+                    ($flag, false) => Ok($name::Set),
+                    ('-', true) => Ok($name::Set),
+                    ('-', false) => Ok($name::NotSet),
                     _ => Err(Error::InvalidProtectionBitsString(value.to_string())),
                 }
             }
@@ -54,25 +49,22 @@ macro_rules! ProtectionBitTryFrom {
 
 #[doc(hidden)]
 macro_rules! ProtectionBitDisplay {
-    ($name: ident, $flag:expr, notinverted) => {
-        impl fmt::Display for $name {
-            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(
-                    formatter,
-                    "{}",
-                    if *self == $name::Set { $flag } else { '-' }
-                )
-            }
-        }
+    ($name:ident, $flag:expr, not_inverted) => {
+        ProtectionBitDisplay!($name, $flag, false);
     };
-    ($name: ident, $flag:expr, inverted) => {
+    ($name:ident, $flag:expr, inverted) => {
+        ProtectionBitDisplay!($name, $flag, true);
+    };
+    ($name:ident, $flag:expr, $inverted:expr) => {
         impl fmt::Display for $name {
             fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(
-                    formatter,
-                    "{}",
-                    if *self == $name::Set { '-' } else { $flag }
-                )
+                let output = match ($inverted, *self == $name::Set) {
+                    (true, true) => '-',
+                    (true, false) => $flag,
+                    (false, true) => $flag,
+                    (false, false) => '-',
+                };
+                write!(formatter, "{}", output)
             }
         }
     };
@@ -80,7 +72,7 @@ macro_rules! ProtectionBitDisplay {
 
 #[doc(hidden)]
 macro_rules! ProtectionBit {
-    ($name: ident, $flag_character:expr, $inverted:tt) => {
+    ($name:ident, $flag:expr, $inverted:tt) => {
         #[doc = concat!("The two states the `", stringify!($name), "` bit can have in a [`ProtectionBits`] instance.")]
         #[derive(Clone, Debug, PartialEq)]
         pub(crate) enum $name {
@@ -90,18 +82,18 @@ macro_rules! ProtectionBit {
             NotSet,
         }
 
-        ProtectionBitTryFrom!($name, $flag_character, $inverted);
-        ProtectionBitDisplay!($name, $flag_character, $inverted);
+        ProtectionBitTryFrom!($name, $flag, $inverted);
+        ProtectionBitDisplay!($name, $flag, $inverted);
     };
 }
 
 ProtectionBit!(ScriptBit, 's', inverted);
 ProtectionBit!(PureBit, 'p', inverted);
 ProtectionBit!(ArchiveBit, 'a', inverted);
-ProtectionBit!(ReadBit, 'r', notinverted);
-ProtectionBit!(WriteBit, 'w', notinverted);
-ProtectionBit!(ExecuteBit, 'e', notinverted);
-ProtectionBit!(DeleteBit, 'd', notinverted);
+ProtectionBit!(ReadBit, 'r', not_inverted);
+ProtectionBit!(WriteBit, 'w', not_inverted);
+ProtectionBit!(ExecuteBit, 'e', not_inverted);
+ProtectionBit!(DeleteBit, 'd', not_inverted);
 
 /// DOS longword type indicating a metadata block.
 pub(crate) const T_SHORT: u32 = 2;
