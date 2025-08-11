@@ -89,11 +89,11 @@ fn build_data_block(
 }
 
 /// Old file system (OFS) code implementation.
-pub(crate) struct OldFileSystem {}
+pub struct OldFileSystem {}
 
 impl OldFileSystem {
     /// Create an OFS implementation instance.
-    pub(crate) fn new() -> Self {
+    pub const fn new() -> Self {
         Self {}
     }
 }

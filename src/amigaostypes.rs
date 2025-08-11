@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Alessandro Gatti - frob.it
+ * Copyright (C) 2024-2025 Alessandro Gatti - frob.it
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -11,7 +11,6 @@ use std::{fmt, str::FromStr};
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use encoding::{EncoderTrap, Encoding, all::ISO_8859_1};
 use log::{debug, error};
-use memoize::memoize;
 
 use crate::common::Error;
 
@@ -74,8 +73,8 @@ macro_rules! ProtectionBitDisplay {
 macro_rules! ProtectionBit {
     ($name:ident, $flag:expr, $inverted:tt) => {
         #[doc = concat!("The two states the `", stringify!($name), "` bit can have in a [`ProtectionBits`] instance.")]
-        #[derive(Clone, Debug, PartialEq)]
-        pub(crate) enum $name {
+        #[derive(Clone, Debug, PartialEq, Eq)]
+        pub enum $name {
             /// The protection bit is set.
             Set,
             /// The protection bit is not set.
@@ -96,17 +95,17 @@ ProtectionBit!(ExecuteBit, 'e', not_inverted);
 ProtectionBit!(DeleteBit, 'd', not_inverted);
 
 /// DOS longword type indicating a metadata block.
-pub(crate) const T_SHORT: u32 = 2;
+pub const T_SHORT: u32 = 2;
 /// DOS longword type indicating a file data container block.
-pub(crate) const T_DATA: u32 = 8;
+pub const T_DATA: u32 = 8;
 /// DOS longword type indicating a file data index extension list block.
-pub(crate) const T_LIST: u32 = 16;
+pub const T_LIST: u32 = 16;
 /// DOS longword secondary type for the root directory block.
-pub(crate) const ST_ROOT: u32 = 1;
+pub const ST_ROOT: u32 = 1;
 /// DOS longword secondary type for directory blocks besides the root.
-pub(crate) const ST_USERDIR: u32 = 2;
+pub const ST_USERDIR: u32 = 2;
 /// DOS longword secondary type for file blocks.
-pub(crate) const ST_FILE: u32 = 0xFFFF_FFFD;
+pub const ST_FILE: u32 = 0xFFFF_FFFD;
 
 /// `BCPL` string wrapper.
 ///
@@ -117,7 +116,7 @@ pub(crate) const ST_FILE: u32 = 0xFFFF_FFFD;
 /// [Wikipedia](https://en.wikipedia.org/wiki/AmigaDOS) provides more
 /// information on the link between `BCPL` and Amiga OS.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct BCPLString(String);
+pub struct BCPLString(String);
 
 impl fmt::Display for BCPLString {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -173,7 +172,7 @@ impl BCPLString {
     /// representaton of the [`BCPLString`] instance it is called on.  The
     /// output [`Vec<u8>`] can be serialised as it is, since it matches how
     /// Amiga OS stores `BCPL` strings in memory.
-    pub(crate) fn to_vec(&self) -> Vec<u8> {
+    pub fn to_vec(&self) -> Vec<u8> {
         // Building a BCPL string from anything but `BCPLString::from_str` is
         // not supported.  Both string length and encoding are checked in that
         // function, so the two unchecked unwraps here are guaranteed to
@@ -186,17 +185,18 @@ impl BCPLString {
             self.0.len()
         );
 
-        #[allow(clippy::cast_possible_truncation)]
-        let length = self.0.len() as u8;
         [
-            vec![length; 1],
+            vec![
+                u8::try_from(self.0.len()).expect("The string length is already checked elsewhere");
+                1
+            ],
             ISO_8859_1.encode(&self.0, EncoderTrap::Strict).unwrap(),
         ]
         .concat()
     }
 
     /// Extract a string slice containing the entire underlying [`String`].
-    pub(crate) fn as_str(&self) -> &str {
+    pub const fn as_str(&self) -> &str {
         self.0.as_str()
     }
 }
@@ -212,27 +212,24 @@ impl BCPLString {
 ///
 /// If any of the criteria mentioned above are not met, the function will return
 /// [`Error::InvalidBCPLString`].
-pub(crate) fn build_bcpl_string(
+pub fn build_bcpl_string(
     string: &str,
     maximum_length: usize,
     invalid_characters: Option<&[char]>,
 ) -> Result<BCPLString, Error> {
     debug!("Checking string \"{string}\" for BCPL compliance.");
 
-    if let Some(invalid_characters) = invalid_characters {
-        for invalid_character in invalid_characters {
-            if string.contains(*invalid_character) {
-                report_bcpl_string_error!(
-                    string,
-                    "invalid character '{}' found in string",
-                    *invalid_character
-                );
-                return Err(Error::InvalidBCPLString {
-                    string: string.to_owned().into(),
-                    reason: format!("Invalid character '{invalid_character}' found in string.")
-                        .into(),
-                });
-            }
+    for invalid_character in invalid_characters.unwrap_or(&[]) {
+        if string.contains(*invalid_character) {
+            report_bcpl_string_error!(
+                string,
+                "invalid character '{}' found in string",
+                *invalid_character
+            );
+            return Err(Error::InvalidBCPLString {
+                string: string.to_owned().into(),
+                reason: format!("Invalid character '{invalid_character}' found in string.").into(),
+            });
         }
     }
 
@@ -265,7 +262,6 @@ pub(crate) fn build_bcpl_string(
 /// specified which time zone it is supposed to be used with said epoch.  For
 /// the sake of simplicity, it is assumed that the epoch timestamp is based on
 /// the UTC time zone.
-#[memoize]
 fn get_amiga_epoch() -> DateTime<Utc> {
     // No error handling here, as if this fails the situation cannot be
     // recovered (cannot build `DateStamp` instances without a starting epoch),
@@ -280,7 +276,6 @@ fn get_amiga_epoch() -> DateTime<Utc> {
 /// representaton of the passed [`Duration`] instance.  The output [`Vec<u8>`]
 /// can be serialised as it is, since it matches how Amiga OS stores
 /// [`DateStamp`] instances in memory.
-#[memoize]
 fn delta_to_vec(delta: Duration) -> Vec<u8> {
     // No error handling here, as the check on whether the number of days fits
     // in an `i32` is done when building the `Duration` instance.  Minutes and
@@ -317,7 +312,7 @@ fn delta_to_vec(delta: Duration) -> Vec<u8> {
 /// whilst using 32-bit integers. Considering Amiga OS was developed in the
 /// early 1980s, that was quite forward-thinking.
 #[derive(Clone, Debug)]
-pub(crate) struct DateStamp {
+pub struct DateStamp {
     epoch_delta: Duration,
 }
 
@@ -342,7 +337,7 @@ impl DateStamp {
     /// instance, [`Error::TimestampRepresentation`] will be returned.  This
     /// only occurs whether the given timestamp is more than 2<sup>31</sup> days
     /// away from the epoch (in either direction).
-    pub(crate) fn from_utc(date_time: DateTime<Utc>) -> Result<Self, Error> {
+    pub fn from_utc(date_time: DateTime<Utc>) -> Result<Self, Error> {
         let epoch_delta = date_time - get_amiga_epoch();
 
         if i32::try_from(epoch_delta.num_days()).is_err() {
@@ -360,7 +355,7 @@ impl DateStamp {
     /// representaton of the [`DateStamp`] instance it is called on.  The output
     /// [`Vec<u8>`] can be serialised as it is, since it matches how Amiga OS
     /// stores [`DateStamp`] strings in memory.
-    pub(crate) fn to_vec(&self) -> Vec<u8> {
+    pub fn to_vec(&self) -> Vec<u8> {
         // The `memoize` crate cannot memoize struct functions, so we use a
         // trampoline function to achieve the same effect.
         delta_to_vec(self.epoch_delta)
@@ -399,7 +394,7 @@ impl fmt::Display for DateStamp {
 /// Since protection bits are serialised to disk as a 32-bits longword, a
 /// convenience function to convert an instance to an [`u32`] is provided.
 #[derive(Clone, Debug)]
-pub(crate) struct ProtectionBits {
+pub struct ProtectionBits {
     script: ScriptBit,
     pure: PureBit,
     archive: ArchiveBit,
@@ -411,19 +406,19 @@ pub(crate) struct ProtectionBits {
 
 impl From<ProtectionBits> for u32 {
     fn from(bits: ProtectionBits) -> Self {
-        u32::from(&bits)
+        Self::from(&bits)
     }
 }
 
 impl From<&ProtectionBits> for u32 {
     fn from(bits: &ProtectionBits) -> Self {
-        let mut value = u32::from(bits.script == ScriptBit::NotSet) << 6;
-        value |= u32::from(bits.pure == PureBit::NotSet) << 5;
-        value |= u32::from(bits.archive == ArchiveBit::NotSet) << 4;
-        value |= u32::from(bits.read == ReadBit::NotSet) << 3;
-        value |= u32::from(bits.write == WriteBit::NotSet) << 2;
-        value |= u32::from(bits.execute == ExecuteBit::NotSet) << 1;
-        value |= u32::from(bits.delete == DeleteBit::NotSet);
+        let mut value = Self::from(bits.script == ScriptBit::NotSet) << 6;
+        value |= Self::from(bits.pure == PureBit::NotSet) << 5;
+        value |= Self::from(bits.archive == ArchiveBit::NotSet) << 4;
+        value |= Self::from(bits.read == ReadBit::NotSet) << 3;
+        value |= Self::from(bits.write == WriteBit::NotSet) << 2;
+        value |= Self::from(bits.execute == ExecuteBit::NotSet) << 1;
+        value |= Self::from(bits.delete == DeleteBit::NotSet);
 
         value
     }
@@ -498,7 +493,7 @@ impl FromStr for ProtectionBits {
 
         let mut characters = trimmed[1..trimmed.len()].chars();
 
-        Ok(ProtectionBits {
+        Ok(Self {
             script: characters.next().unwrap().try_into()?,
             pure: characters.next().unwrap().try_into()?,
             archive: characters.next().unwrap().try_into()?,

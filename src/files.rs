@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Alessandro Gatti - frob.it
+ * Copyright (C) 2024-2025 Alessandro Gatti - frob.it
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -12,7 +12,7 @@ use log::{debug, trace};
 
 use crate::{
     allocator::{BitmapAllocator, check_block_number},
-    amigaostypes::{BCPLString, ST_FILE, T_LIST, T_SHORT},
+    amigaostypes::{ST_FILE, T_LIST, T_SHORT},
     common::{DATA_BLOCKS_COUNT, Error},
     disk::DiskBlock,
     filesystem::{FileSystemInternal, Node, NodeKind},
@@ -25,7 +25,7 @@ use crate::{
 /// The function will return [`Error::DiskFull`] or
 /// [`Error::EndOfBitmapReached`] if one or more file data cannot fit on the
 /// disk.
-pub(crate) fn allocate_files(
+pub fn allocate_files(
     directory: &Rc<RefCell<Node>>,
     bitmap_allocator: &mut BitmapAllocator,
     filesystem: &dyn FileSystemInternal,
@@ -134,7 +134,7 @@ fn allocate_file(
 /// either [`Error::DiskFull`] in case it is known there are not enough free
 /// blocks at all, or [`Error::EndOfBitmapReached`] if there are enough free
 /// blocks in the image but not enough when using the chosen starting point.
-pub(crate) fn allocate_file_blocks(
+pub fn allocate_file_blocks(
     contents_size: usize,
     bitmap_allocator: &mut BitmapAllocator,
     data_block_size: usize,
@@ -154,23 +154,22 @@ pub(crate) fn allocate_file_blocks(
     debug!(
         "Needing {data_blocks_needed} header block(s) and {header_blocks_needed} data block(s)."
     );
-    let header_block_numbers: Vec<u32> = bitmap_allocator
-        .allocate_blocks(header_blocks_needed, None)?
-        .clone();
-    let data_block_numbers: Vec<u32> = bitmap_allocator
-        .allocate_blocks(data_blocks_needed, None)?
-        .clone();
 
-    // The two calls to `unwrap()` are there to raise a panic on purpose if one
-    // or more blocks returned by the allocator are invalid.  This also removes
-    // some redundant error checking in the rest of the code unit.
+    let header_block_numbers: Vec<u32> =
+        bitmap_allocator.allocate_blocks(header_blocks_needed, None)?;
+    let data_block_numbers: Vec<u32> =
+        bitmap_allocator.allocate_blocks(data_blocks_needed, None)?;
 
-    header_block_numbers
-        .iter()
-        .for_each(|block| check_block_number(*block).unwrap());
-    data_block_numbers
-        .iter()
-        .for_each(|block| check_block_number(*block).unwrap());
+    // The two calls to `unwrap_or_else` are there to raise a panic on purpose
+    // if one or more blocks returned by the allocator are invalid.  This also
+    // removes some redundant error checking in the rest of the code unit.
+
+    for block in &header_block_numbers {
+        check_block_number(*block).unwrap_or_else(|_| panic!("Invalid header block #{}.", *block));
+    }
+    for block in &data_block_numbers {
+        check_block_number(*block).unwrap_or_else(|_| panic!("Invalid data block #{}.", *block));
+    }
 
     Ok((header_block_numbers, data_block_numbers))
 }
@@ -181,7 +180,7 @@ pub(crate) fn allocate_file_blocks(
 /// and payload blocks.  Those pre-allocated block numbers cover both metadata
 /// and data block sequences, or an assertion will trigger - terminating the
 /// program.
-pub(crate) fn build_file_metadata_blocks(
+pub fn build_file_metadata_blocks(
     node: &Rc<RefCell<Node>>,
     header_block_numbers: &[u32],
     data_block_numbers: &[u32],
@@ -249,7 +248,7 @@ pub(crate) fn build_file_metadata_blocks(
         let next = extensions_block_iterator
             .by_ref()
             .peek()
-            .map(|block_pair| *block_pair.0);
+            .map(|block_pair_reference| *block_pair_reference.0);
         debug!(
             "Building sequence block #{}/{} located at disk block #{}, followed by disk block {}.",
             sequence_block_index,
@@ -415,11 +414,7 @@ fn build_file_header_block(
     disk_block.write_buffer(
         -46,
         "comment",
-        &payload
-            .comment()
-            .as_ref()
-            .unwrap_or(&BCPLString::default())
-            .to_vec(),
+        &payload.comment().unwrap_or_default().to_vec(),
     );
     disk_block.write_buffer(
         -23,

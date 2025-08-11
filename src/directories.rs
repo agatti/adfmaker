@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Alessandro Gatti - frob.it
+ * Copyright (C) 2024-2025 Alessandro Gatti - frob.it
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -37,7 +37,7 @@ use crate::{
 /// The function will return [`Error::EndOfBitmapReached`] if there are no
 /// free blocks to allocate, or [`Error::BitmapBlockOutOfRange`] if the
 /// internal allocator state becomes inconsistent.
-pub(crate) fn allocate_directories(
+pub fn allocate_directories(
     root: &Rc<RefCell<Node>>,
     bitmap_allocator: &mut BitmapAllocator,
 ) -> Result<Vec<DiskBlock>, Error> {
@@ -112,7 +112,7 @@ pub(crate) fn allocate_directories(
 ///
 /// The function will perform **no checks** on the validity of the disk name,
 /// and assumes it already honours length and content validity criteria.
-pub(crate) fn build_root_block(disk_name: &BCPLString, root: &Rc<RefCell<Node>>) -> DiskBlock {
+pub fn build_root_block(disk_name: &BCPLString, root: &Rc<RefCell<Node>>) -> DiskBlock {
     debug!(
         "Building root block for disk \"{}\" at block #{}.",
         disk_name.as_str(),
@@ -223,7 +223,7 @@ pub(crate) fn build_root_block(disk_name: &BCPLString, root: &Rc<RefCell<Node>>)
 /// The function will return [`Error::EndOfBitmapReached`] if there are no free
 /// blocks to allocate, or [`Error::BitmapBlockOutOfRange`] if the chosen block
 /// number is past the allowed disk blocks range.
-pub(crate) fn build_directory_block(
+pub fn build_directory_block(
     block_number: u32,
     node: &Rc<RefCell<Node>>,
 ) -> Result<DiskBlock, Error> {
@@ -351,7 +351,7 @@ pub(crate) fn build_directory_block(
 ///
 /// This function will panic if the internal state of the hash table or of any
 /// node contained becomes inconsistent.
-pub(crate) fn write_directory_hash_table(
+pub fn write_directory_hash_table(
     node: &Rc<RefCell<Node>>,
     built_blocks: &mut HashMap<u32, DiskBlock>,
 ) {

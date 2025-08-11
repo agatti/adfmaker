@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Alessandro Gatti - frob.it
+ * Copyright (C) 2024-2025 Alessandro Gatti - frob.it
  *
  * SPDX-License-Identifier: Apache-2.0
  */

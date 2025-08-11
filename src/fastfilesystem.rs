@@ -39,11 +39,11 @@ fn build_data_block(block_number: u32, payload: &[u8]) -> DiskBlock {
 }
 
 /// Fast file system (FFS) code implementation.
-pub(crate) struct FastFileSystem {}
+pub struct FastFileSystem {}
 
 impl FastFileSystem {
     /// Create a FFS implementation instance.
-    pub(crate) fn new() -> Self {
+    pub const fn new() -> Self {
         Self {}
     }
 }
@@ -70,24 +70,24 @@ impl FileSystemInternal for FastFileSystem {
 
         let mut peekable_block_numbers = block_numbers.iter().peekable();
         for (sequence_number, chunk) in (1u32..).zip(contents.chunks(DISK_BLOCK_SIZE)) {
-            let wrapped_block_number = peekable_block_numbers.next().copied();
-            assert!(
-                wrapped_block_number.is_some(),
-                "Sequence block #{sequence_number} was requested after running out of data block numbers."
-            );
-            let block_number = wrapped_block_number.unwrap();
-            let next_block_number = peekable_block_numbers.peek().map(|block| **block);
-            debug!(
-                "Building sequence block #{}/{} located at disk block #{} followed by disk block {}.",
-                sequence_number,
-                block_numbers.len(),
-                block_number,
-                next_block_number.map_or("N/A (end of sequence reached)".into(), |block| format!(
-                    "#{block}"
-                ))
-            );
-            blocks.push(build_data_block(block_number, chunk));
-            debug!("Block #{}/{} built.", sequence_number, block_numbers.len());
+            if let Some(block_number) = peekable_block_numbers.next().copied() {
+                debug!(
+                    "Building sequence block #{}/{} located at disk block #{} followed by disk block {}.",
+                    sequence_number,
+                    block_numbers.len(),
+                    block_number,
+                    peekable_block_numbers.peek().map_or(
+                        "N/A (end of sequence reached)".into(),
+                        |next_block| format!("#{next_block}")
+                    )
+                );
+                blocks.push(build_data_block(block_number, chunk));
+                debug!("Block #{}/{} built.", sequence_number, block_numbers.len());
+            } else {
+                panic!(
+                    "Sequence block #{sequence_number} was requested after running out of data block numbers."
+                );
+            }
         }
 
         blocks

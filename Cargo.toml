@@ -8,6 +8,11 @@
 name = "adfmaker"
 version = "0.1.0"
 edition = "2024"
+description = "AmigaOS disk image builder"
+license = "Apache-2.0"
+repository = "https://github.com/agatti/adfmaker"
+categories = ["command-line-utilities", "emulators", "filesystem"]
+keywords = ["amiga", "disk image", "ofs", "ffs", "adf"]
 
 [dependencies]
 anyhow = "1.0.98"
@@ -17,7 +22,38 @@ clap-verbosity-flag = "3.0.2"
 csv = "1.3.1"
 encoding = "0.2.33"
 log = "0.4.27"
-memoize = "0.5.1"
 pretty-hex = "0.4.1"
 simple_logger = "5.0.0"
 thiserror = "2.0.12"
+
+[lints.rust]
+ambiguous_negative_literals = "deny"
+deprecated_safe = "deny"
+future_incompatible = "deny"
+keyword_idents = "deny"
+let_underscore = "deny"
+nonstandard_style = "deny"
+refining_impl_trait = "deny"
+rust_2018_compatibility = "deny"
+rust_2018_idioms = "deny"
+rust_2021_compatibility = "deny"
+rust_2024_compatibility = "deny"
+unreachable_patterns = "deny"
+unused = "deny"
+warnings = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+correctness = { level = "warn", priority = -1 }
+multiple_crate_versions = "allow"
+nursery = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+restriction = { level = "allow", priority = -1 }
+shadow_reuse = "warn"
+shadow_same = "warn"
+shadow_unrelated = "warn"
+style = { level = "warn", priority = -1 }
+suspicious = { level = "warn", priority = -1 }

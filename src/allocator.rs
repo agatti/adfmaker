@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Alessandro Gatti - frob.it
+ * Copyright (C) 2024-2025 Alessandro Gatti - frob.it
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -22,7 +22,7 @@ pub const LAST_BLOCK: u32 = common::BLOCKS_PER_IMAGE as u32;
 ///
 /// If the block number is out of range, the function will return
 /// [`Error::BitmapBlockOutOfRange`].
-pub(crate) fn check_block_number(block_number: u32) -> Result<(), Error> {
+pub fn check_block_number(block_number: u32) -> Result<(), Error> {
     if !(FIRST_BLOCK..LAST_BLOCK).contains(&block_number) {
         error!("Block #{block_number} is outside the disk image bounds.",);
         return Err(Error::BitmapBlockOutOfRange(block_number));
@@ -32,7 +32,7 @@ pub(crate) fn check_block_number(block_number: u32) -> Result<(), Error> {
 }
 
 /// Disk sector allocator.
-pub(crate) struct BitmapAllocator {
+pub struct BitmapAllocator {
     /// The map of allocated blocks.
     ///
     /// There are more space-efficient ways to handle this, but given the amount
@@ -47,7 +47,7 @@ impl BitmapAllocator {
     ///
     /// The allocator will automatically reserve the boot, root, and bitmap
     /// metadata blocks.
-    pub(crate) fn new() -> Self {
+    pub const fn new() -> Self {
         let mut bits = [true; common::BLOCKS_PER_IMAGE];
         bits[common::ROOT_BLOCK_NUMBER as usize] = false;
         bits[common::BITMAP_BLOCK_NUMBER as usize] = false;
@@ -64,7 +64,7 @@ impl BitmapAllocator {
     /// given block index, without any concern for filesystem fragmentation or
     /// disk seeks minimisation.  If it was not possible to claim enough blocks
     /// from the given block start index, the function will return [`None`].
-    fn collect_free_blocks(&mut self, count: usize, first_block: u32) -> Option<Vec<u32>> {
+    fn collect_free_blocks(&self, count: usize, first_block: u32) -> Option<Vec<u32>> {
         let mut blocks: Vec<u32> = vec![];
         let mut blocks_count = count;
 
@@ -137,11 +137,7 @@ impl BitmapAllocator {
     /// free blocks at all, or [`Error::EndOfBitmapReached`] if there are
     /// enough free blocks in the image but not enough when using the chosen
     /// starting point.
-    pub(crate) fn allocate_blocks(
-        &mut self,
-        count: usize,
-        start: Option<u32>,
-    ) -> Result<Vec<u32>, Error> {
+    pub fn allocate_blocks(&mut self, count: usize, start: Option<u32>) -> Result<Vec<u32>, Error> {
         debug!(
             "Attempting to allocate {} block(s) starting from block #{}.",
             count,
@@ -211,7 +207,7 @@ impl BitmapAllocator {
     /// Even though the number of available blocks is divisible by
     /// [`u32::BITS`], the first two blocks (used for the boot block) are not
     /// considered when serialising the bitmap.
-    pub(crate) fn to_vec(&self) -> Vec<u8> {
+    pub fn to_vec(&self) -> Vec<u8> {
         self.bits
             .iter()
             .skip(FIRST_BLOCK as usize)
@@ -236,7 +232,7 @@ impl BitmapAllocator {
     ///
     /// If the block is out of range, the function will return
     /// [`Error::BitmapBlockOutOfRange`].
-    pub(crate) fn is_block_set(&self, block: u32) -> Result<bool, Error> {
+    pub fn is_block_set(&self, block: u32) -> Result<bool, Error> {
         check_block_number(block)?;
         trace!(
             "Looking at block #{}, state: {}.",

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Alessandro Gatti - frob.it
+ * Copyright (C) 2024-2025 Alessandro Gatti - frob.it
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -8,25 +8,6 @@
 // Reference/Amiga_Mail_Vol1/Trackdisk/Notes1.2Track from the
 // Amiga Developers CD 2.1, and "AmigaDOS Technical Reference Manual"
 // published by Commodore in 1985.
-
-#![warn(clippy::shadow_reuse)]
-#![warn(clippy::shadow_same)]
-#![warn(clippy::shadow_unrelated)]
-#![deny(unreachable_patterns)]
-#![deny(warnings)]
-#![deny(future_incompatible)]
-#![deny(let_underscore)]
-#![deny(nonstandard_style)]
-#![deny(unused)]
-#![deny(rust_2018_compatibility)]
-#![deny(rust_2018_idioms)]
-#![deny(rust_2021_compatibility)]
-#![deny(rust_2024_compatibility)]
-#![deny(deprecated_safe)]
-#![warn(clippy::all)]
-#![warn(clippy::pedantic)]
-#![allow(clippy::nursery)]
-#![allow(clippy::restriction)]
 
 use std::{
     fs::File,
@@ -122,7 +103,7 @@ fn main() -> Result<(), anyhow::Error> {
 // not ever fail.
 
 #[doc(hidden)]
-fn _ensure_usize_is_32_bits_or_wider() {
+const fn _ensure_usize_is_32_bits_or_wider() {
     // See https://doc.rust-lang.org/reference/items/constant-items.html#evaluation
     #[allow(clippy::assertions_on_constants)]
     const _: () = assert!(

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Alessandro Gatti - frob.it
+ * Copyright (C) 2024-2025 Alessandro Gatti - frob.it
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -88,7 +88,7 @@ fn read_boot_block(path: &PathBuf) -> Result<Option<Vec<u8>>, Error> {
 ///
 /// The boot block data is ready to be written to the disk image, with checksum
 /// and all.
-pub(crate) fn create_boot_block(boot_code: Option<Vec<u8>>, r#type: u8) -> Vec<u8> {
+pub fn create_boot_block(boot_code: Option<Vec<u8>>, r#type: u8) -> Vec<u8> {
     /*
 
      0                   1                   2                   3
@@ -132,8 +132,8 @@ pub(crate) fn create_boot_block(boot_code: Option<Vec<u8>>, r#type: u8) -> Vec<u
     cursor.write_all(&[b'D', b'O', b'S', r#type]).unwrap();
     cursor.set_position((mem::size_of::<u32>() * 2) as u64);
     cursor.write_all(&ROOT_BLOCK_NUMBER.to_be_bytes()).unwrap();
-    if let Some(boot_code) = boot_code {
-        cursor.write_all(&boot_code).unwrap();
+    if let Some(boot_code_bytes) = boot_code {
+        cursor.write_all(&boot_code_bytes).unwrap();
     }
 
     let mut block = cursor.into_inner();
@@ -205,7 +205,7 @@ fn calculate_longword_offset(offset: isize) -> (usize, usize, usize) {
 
 /// Struct representing a single block that is part of a disk image.
 #[derive(Clone)]
-pub(crate) struct DiskBlock {
+pub struct DiskBlock {
     /// The block index.
     index: u32,
     /// The block contents.
@@ -221,7 +221,7 @@ impl DiskBlock {
     ///
     /// The function will return [`Error::BitmapBlockOutOfRange`] if the index
     /// is past the range a double density disk image allows.
-    pub(crate) fn new(index: u32) -> Result<Self, Error> {
+    pub fn new(index: u32) -> Result<Self, Error> {
         check_block_number(index)?;
 
         Ok(Self {
@@ -232,7 +232,7 @@ impl DiskBlock {
     }
 
     /// Get the disk block index.
-    pub(crate) fn index(&self) -> u32 {
+    pub const fn index(&self) -> u32 {
         self.index
     }
 
@@ -240,7 +240,7 @@ impl DiskBlock {
     ///
     /// To write in the payload buffer, look at [`DiskBlock::write_longword`]
     /// and [`DiskBlock::write_buffer`].
-    pub(crate) fn payload(&self) -> &[u8] {
+    pub const fn payload(&self) -> &[u8] {
         &self.payload
     }
 
@@ -274,7 +274,7 @@ impl DiskBlock {
     /// );
     /// # }
     /// ```
-    pub(crate) fn write_longword(&mut self, longword_offset: isize, name: &str, value: u32) {
+    pub fn write_longword(&mut self, longword_offset: isize, name: &str, value: u32) {
         let (forward, backward, effective) = calculate_longword_offset(longword_offset);
 
         trace!(
@@ -305,7 +305,7 @@ impl DiskBlock {
     /// assert_eq!(0x87654321, d.read_longword(-1, "backward"));
     /// # }
     /// ```
-    pub(crate) fn read_longword(&self, longword_offset: isize, name: &str) -> u32 {
+    pub fn read_longword(&self, longword_offset: isize, name: &str) -> u32 {
         let (forward, backward, effective) = calculate_longword_offset(longword_offset);
 
         trace!(
@@ -350,7 +350,7 @@ impl DiskBlock {
     /// );
     /// # }
     /// ```
-    pub(crate) fn write_buffer(&mut self, longword_offset: isize, name: &str, value: &[u8]) {
+    pub fn write_buffer(&mut self, longword_offset: isize, name: &str, value: &[u8]) {
         let (forward, backward, effective) = calculate_longword_offset(longword_offset);
 
         trace!(
@@ -373,7 +373,7 @@ impl DiskBlock {
     /// must be run **before** the checksum is written to the disk block.  Leave
     /// the checksum field filled with zeroes before calling this function, and
     /// it will just work.
-    pub(crate) fn compute_checksum(&mut self) -> u32 {
+    pub fn compute_checksum(&self) -> u32 {
         0u32.wrapping_sub(
             self.payload
                 .chunks_exact(mem::size_of::<u32>())
@@ -389,12 +389,12 @@ impl DiskBlock {
     /// and the root blocks need a checksum computed and put at offset $14.  FFS
     /// still requires them but file data blocks must not have that checksum
     /// written.
-    pub(crate) fn is_checksum_needed(&self) -> bool {
+    pub const fn is_checksum_needed(&self) -> bool {
         self.needs_checksum
     }
 
     /// Mark the block as needing a checksum computed and stored.
-    pub(crate) fn needs_checksum(&mut self) {
+    pub const fn needs_checksum(&mut self) {
         self.needs_checksum = true;
     }
 
@@ -412,7 +412,7 @@ impl DiskBlock {
     /// d.dump().for_each(|line| println!("{line}"));
     /// # }
     /// ```
-    pub(crate) fn dump(&self) -> Vec<String> {
+    pub fn dump(&self) -> Vec<String> {
         format!(
             "{:?}",
             self.payload.hex_conf(HexConfig {
@@ -448,7 +448,7 @@ fn check_blocks_allocation_state(
 }
 
 /// Amiga Disk Image builder.
-pub(crate) struct DiskImageBuilder<'a> {
+pub struct DiskImageBuilder<'a> {
     /// The disk name used by the operating system.
     name: BCPLString,
     /// An optional [`Vec<u8>`] with the data to put in the disk's boot block.
@@ -461,7 +461,7 @@ pub(crate) struct DiskImageBuilder<'a> {
 
 impl<'a> DiskImageBuilder<'a> {
     /// Create a [`DiskImageBuilder`] with no data.
-    pub(crate) fn new(filesystem: &'a dyn FileSystemInternal) -> Self {
+    pub fn new(filesystem: &'a dyn FileSystemInternal) -> Self {
         Self {
             name: BCPLString::default(),
             boot_code: None,
@@ -477,9 +477,9 @@ impl<'a> DiskImageBuilder<'a> {
     /// The function will return [`Error::InvalidDiskName`] if the given name
     /// is either too long, contains invalid characters (either `:` or `/`), or
     /// cannot be encoded as an `ISO-8859-1` string.
-    pub(crate) fn set_name(&mut self, name: &str) -> Result<&mut Self, Error> {
+    pub fn set_name(&mut self, name: &str) -> Result<&mut Self, Error> {
         match build_bcpl_string(name, MAXIMUM_NAME_LENGTH, Some(&['/', ':'])) {
-            Ok(name) => self.name = name,
+            Ok(name_string) => self.name = name_string,
             Err(error) => {
                 return Err(Error::InvalidDiskName {
                     name: name.to_owned().into(),
@@ -502,7 +502,7 @@ impl<'a> DiskImageBuilder<'a> {
     /// reading the boot block file (as in, I/O read error, file not found,
     /// etc.), or [`Error::BootCodeTooLarge`] if the given file does not fit
     /// in the amount of space allocated for a boot block.
-    pub(crate) fn set_boot_block(&mut self, path: Option<PathBuf>) -> Result<&mut Self, Error> {
+    pub fn set_boot_block(&mut self, path: Option<PathBuf>) -> Result<&mut Self, Error> {
         if path.is_some() {
             self.boot_code = read_boot_block(&path.unwrap())?;
         }
@@ -516,7 +516,7 @@ impl<'a> DiskImageBuilder<'a> {
     /// not added more than once to the filesystem tree.  Its purpose is to be
     /// called from a loop when the whole disk contents are already known and
     /// will not change.
-    pub(crate) fn add_entry(&mut self, entry: &DiskEntry) -> &mut Self {
+    pub fn add_entry(&mut self, entry: &DiskEntry) -> &mut Self {
         debug!("Adding entry \"{}\" to the image.", entry.target_path());
         Node::from_disk_entry(&self.root, entry);
         self
@@ -537,7 +537,7 @@ impl<'a> DiskImageBuilder<'a> {
     /// If the internal state became inconsistent, this function will cause the
     /// application to panic.  In that case there is no way to recover, hence
     /// the lack of more precise error handling.
-    pub(crate) fn build(self) -> Result<Vec<u8>, Error> {
+    pub fn build(self) -> Result<Vec<u8>, Error> {
         // All calls to `unwrap()` on writes on `Cursor` are not checked, as
         // those write operations are guaranteed to succeed.  If they fail,
         // either a bug in `Cursor` was hit or the values of `BLOCKS_PER_IMAGE`

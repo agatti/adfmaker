@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Alessandro Gatti - frob.it
+ * Copyright (C) 2024-2025 Alessandro Gatti - frob.it
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -26,8 +26,8 @@ use crate::{
 };
 
 /// Enumeration to describe the types of nodes that can be built.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) enum NodeKind {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NodeKind {
     /// The node in question is a directory (either intermediate or final).
     Directory,
     /// The node in question is a file.
@@ -40,8 +40,8 @@ impl fmt::Display for NodeKind {
             formatter,
             "{}",
             match self {
-                NodeKind::Directory => "Directory",
-                NodeKind::File => "File",
+                Self::Directory => "Directory",
+                Self::File => "File",
             }
         )
     }
@@ -55,7 +55,7 @@ impl fmt::Display for NodeKind {
 /// references to parent and child nodes, but also associated payload data if
 /// any is present.
 #[derive(Clone)]
-pub(crate) struct Node {
+pub struct Node {
     /// A weak reference to the parent node.
     ///
     /// The parent reference is guaranteed to be retained even if it is a weak
@@ -90,7 +90,7 @@ pub(crate) struct Node {
 
 impl Node {
     /// Build an instance of a root filesystem node.
-    pub(crate) fn root() -> Self {
+    pub fn root() -> Self {
         debug!("Allocating root filesystem node.");
         Self {
             parent: RefCell::new(Weak::new()),
@@ -109,7 +109,7 @@ impl Node {
     /// Most of the parameters for this constructor are empty and are meant to
     /// be filled in at a later stage when building the node tree.
     fn new(
-        parent: &Rc<RefCell<Node>>,
+        parent: &Rc<RefCell<Self>>,
         name: &BCPLString,
         comment: Option<&BCPLString>,
         protection_bits: Option<ProtectionBits>,
@@ -128,7 +128,9 @@ impl Node {
             parent: RefCell::new(Rc::downgrade(parent)),
             children: ChainedHashMap::new(HASH_TABLE_BUCKETS),
             protection_bits: protection_bits.unwrap_or_default(),
-            comment: comment.unwrap_or(&BCPLString::default()).to_owned(),
+            comment: comment.map_or_else(BCPLString::default, |unwrapped_comment| {
+                unwrapped_comment.to_owned()
+            }),
             name: name.to_owned(),
             timestamp: timestamp.unwrap_or_default(),
             payload: payload.cloned(),
@@ -138,19 +140,19 @@ impl Node {
         let mut borrowed_parent = parent.borrow_mut();
         let child_node = Rc::new(RefCell::new(node));
         borrowed_parent.children.add_entry(&child_node);
-        child_node.clone()
+        child_node
     }
 
     /// Find a direct child whose name matches the given string.
     ///
     /// This will search only for children one level deep, it will not recurse
     /// down.  The function will panic if an invalid name is given.
-    fn find_child(&self, name: &str) -> Option<Rc<RefCell<Node>>> {
+    fn find_child(&self, name: &str) -> Option<Rc<RefCell<Self>>> {
         self.children.find_entry(name)
     }
 
     /// Get the node's absolute path.
-    pub(crate) fn absolute_path(&self) -> String {
+    pub fn absolute_path(&self) -> String {
         let mut fragments: Vec<BCPLString> = vec![self.name.clone()];
 
         let mut parent = self.parent.borrow().upgrade();
@@ -166,14 +168,10 @@ impl Node {
             .map(BCPLString::as_str)
             .collect::<Vec<&str>>()
             .join("/")
-            .clone()
     }
 
     /// Build a filesystem node from the given [`DiskEntry`].
-    pub(crate) fn from_disk_entry(
-        root: &Rc<RefCell<Node>>,
-        disk_entry: &DiskEntry,
-    ) -> Rc<RefCell<Self>> {
+    pub fn from_disk_entry(root: &Rc<RefCell<Self>>, disk_entry: &DiskEntry) -> Rc<RefCell<Self>> {
         debug!(
             "Building filesystem node from disk entry \"{}\" rooted at \"{}\".",
             disk_entry.target_path(),
@@ -189,22 +187,23 @@ impl Node {
             );
 
             let found_node = current.borrow().find_child(path_fragment);
-            current = if let Some(found_node) = found_node {
-                found_node
-            } else {
-                Node::new(
-                    &current,
-                    &BCPLString::from_str(path_fragment).unwrap(),
-                    None,
-                    None,
-                    None,
-                    None,
-                )
-            };
+            current = found_node.map_or_else(
+                || {
+                    Self::new(
+                        &current,
+                        &BCPLString::from_str(path_fragment).unwrap(),
+                        None,
+                        None,
+                        None,
+                        None,
+                    )
+                },
+                |found_node_reference| found_node_reference,
+            );
         }
 
         let mut borrowed_current = current.borrow_mut();
-        borrowed_current.comment = disk_entry.comment().unwrap_or_default().clone();
+        borrowed_current.comment = disk_entry.comment().unwrap_or_default();
         borrowed_current.protection_bits = disk_entry.protection_bits().unwrap_or_default();
         borrowed_current.timestamp = disk_entry.timestamp().unwrap_or_default();
         borrowed_current.payload = Some(disk_entry.clone());
@@ -217,7 +216,7 @@ impl Node {
     /// This function will panic if the block number is either in the boot block
     /// area, is the bitmap block number, or if its number is past the end of
     /// the disk.
-    pub(crate) fn set_block(&mut self, block: u32) {
+    pub fn set_block(&mut self, block: u32) {
         assert!(
             self.block.is_none(),
             "Path \"{}\" already has a block allocated (#{}).",
@@ -240,7 +239,7 @@ impl Node {
     }
 
     /// Get the node's assigned block number, if any.
-    pub(crate) fn block(&self) -> Option<u32> {
+    pub const fn block(&self) -> Option<u32> {
         self.block
     }
 
@@ -248,15 +247,15 @@ impl Node {
     ///
     /// If this node has a parent a reference-counted instance of the parent
     /// cell will be returned, with its reference count increased by one.
-    pub(crate) fn parent(&self) -> Option<Rc<RefCell<Node>>> {
-        self.parent.borrow().upgrade().clone()
+    pub fn parent(&self) -> Option<Rc<RefCell<Self>>> {
+        self.parent.borrow().upgrade()
     }
 
     /// Build an iterator iterating through the children nodes.
     ///
     /// This iterator will only iterate through direct children of the node, and
     /// will not recurse down.
-    pub(crate) fn children(&self) -> impl Iterator<Item = &Rc<RefCell<Node>>> {
+    pub fn children(&self) -> impl Iterator<Item = &Rc<RefCell<Self>>> {
         assert!(
             self.kind() == NodeKind::Directory,
             "Children iterator requested on file node \"{}\".",
@@ -266,17 +265,17 @@ impl Node {
     }
 
     /// Get the filesystem node's payload, if any is present.
-    pub(crate) fn payload(&self) -> Option<DiskEntry> {
+    pub fn payload(&self) -> Option<DiskEntry> {
         self.payload.clone()
     }
 
     /// Get the filesystem node's name.
-    pub(crate) fn name(&self) -> &BCPLString {
+    pub const fn name(&self) -> &BCPLString {
         &self.name
     }
 
     /// Get the filesystem node's kind.
-    pub(crate) fn kind(&self) -> NodeKind {
+    pub fn kind(&self) -> NodeKind {
         if self.payload.as_ref().is_some() && self.payload.as_ref().unwrap().source_path().is_some()
         {
             NodeKind::File
@@ -286,7 +285,7 @@ impl Node {
     }
 
     /// Build an iterator iterating through the children hash table buckets.
-    pub(crate) fn hash_table_buckets(&self) -> impl Iterator<Item = &Vec<Rc<RefCell<Node>>>> {
+    pub fn hash_table_buckets(&self) -> impl Iterator<Item = &Vec<Rc<RefCell<Self>>>> {
         self.children.buckets_iter()
     }
 }
@@ -403,13 +402,13 @@ impl ChainedHashMap {
 /// This iterator traverses the filesystem tree in-order.  Right now there is no
 /// need to generalise this to return all nodes that match a certain criteria
 /// set.
-pub(crate) struct DirectoryIterator {
+pub struct DirectoryIterator {
     stack: Vec<Rc<RefCell<Node>>>,
 }
 
 impl DirectoryIterator {
     /// Build a directory iterator starting from the given root node.
-    pub(crate) fn new(root: &Rc<RefCell<Node>>) -> Self {
+    pub fn new(root: &Rc<RefCell<Node>>) -> Self {
         debug!(
             "Building directory iterator starting at \"{}\".",
             root.borrow().absolute_path()
@@ -447,7 +446,7 @@ impl Iterator for DirectoryIterator {
             current.borrow().absolute_path()
         );
 
-        let emitted = current.clone();
+        let emitted = current;
 
         debug!("Iterating through children.");
         for child in emitted.borrow().children() {
@@ -479,7 +478,7 @@ impl Iterator for DirectoryIterator {
 }
 
 /// Trait encapsulating filesystem-specific code.
-pub(crate) trait FileSystemInternal {
+pub trait FileSystemInternal {
     /// Return the maximum file size that can be stored in the filesystem.
     fn maximum_file_size(&self) -> u64;
 

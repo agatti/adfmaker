@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Alessandro Gatti - frob.it
+ * Copyright (C) 2024-2025 Alessandro Gatti - frob.it
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -9,7 +9,7 @@
 use std::{collections::HashSet, fmt, fs::File, io::Read, path::PathBuf, str::FromStr};
 
 use chrono::{DateTime, Utc};
-use csv::StringRecord;
+use csv::{Position, StringRecord};
 use log::{debug, error};
 
 use crate::{
@@ -17,20 +17,9 @@ use crate::{
     common::{Error, MAXIMUM_COMMENT_LENGTH, MAXIMUM_NAME_LENGTH},
 };
 
-#[doc(hidden)]
-macro_rules! report_parse_error {
-    ($line:expr, $cause:expr) => {
-        error!("Record parse failed at line {}: {}.", $line, $cause);
-    };
-
-    ($line:expr, $cause:expr, $($field:expr),+) => {
-        error!("Record parse failed at line {}: {}.", $line, format!($cause, $($field),+));
-    };
-}
-
 /// Preprocessed disk content file entry.
 #[derive(Clone, Default)]
-pub(crate) struct DiskEntry {
+pub struct DiskEntry {
     /// The target path on the disk image.
     target_path: String,
     /// An optional [`PathBuf`] pointing to the entry data source.
@@ -63,7 +52,7 @@ impl fmt::Display for DiskEntry {
 
 impl DiskEntry {
     /// Get the disk entry's target path components.
-    pub(crate) fn path_components(&self) -> Vec<&str> {
+    pub fn path_components(&self) -> Vec<&str> {
         self.target_path
             .split('/')
             .filter(|component| !component.is_empty())
@@ -71,38 +60,38 @@ impl DiskEntry {
     }
 
     /// Get the disk entry's comment, if any is present.
-    pub(crate) fn comment(&self) -> Option<BCPLString> {
+    pub fn comment(&self) -> Option<BCPLString> {
         self.comment.clone()
     }
 
     /// Get the disk entry's protection bits, if any are present.
-    pub(crate) fn protection_bits(&self) -> Option<ProtectionBits> {
+    pub fn protection_bits(&self) -> Option<ProtectionBits> {
         self.protection_bits.clone()
     }
 
     /// Get the disk entry's timestamp, if any is present.
-    pub(crate) fn timestamp(&self) -> Option<DateStamp> {
+    pub fn timestamp(&self) -> Option<DateStamp> {
         self.timestamp.clone()
     }
 
     /// Get the disk entry's target path.
-    pub(crate) fn target_path(&self) -> &str {
+    pub const fn target_path(&self) -> &str {
         self.target_path.as_str()
     }
 
     /// Get the disk entry's source path.
-    pub(crate) fn source_path(&self) -> Option<PathBuf> {
+    pub fn source_path(&self) -> Option<PathBuf> {
         self.source_path.clone()
     }
 
     /// Get the disk entry's contents size, if any are present.
-    pub(crate) fn size(&self) -> Option<u32> {
+    pub fn size(&self) -> Option<u32> {
         #[allow(clippy::cast_possible_truncation)]
         self.contents.as_ref().map(|contents| contents.len() as u32)
     }
 
     /// Get the disk entry's contents, if any are present.
-    pub(crate) fn contents(&self) -> Option<&[u8]> {
+    pub fn contents(&self) -> Option<&[u8]> {
         self.contents.as_deref()
     }
 }
@@ -138,16 +127,14 @@ fn normalise_target_path(path: &str) -> Result<String, Error> {
             continue;
         }
 
-        match build_bcpl_string(fragment, MAXIMUM_NAME_LENGTH, Some(&[':'])) {
-            Ok(_) => path_fragments.push(fragment),
-            Err(error) => {
-                return Err(Error::InvalidTargetFileName {
-                    name: path.to_owned().into(),
-                    reason: format!("Fragment \"{fragment}\" cannot be a BCPL string: {error}.",)
-                        .into(),
-                });
+        build_bcpl_string(fragment, MAXIMUM_NAME_LENGTH, Some(&[':'])).map_err(|error| {
+            Error::InvalidTargetFileName {
+                name: path.to_owned().into(),
+                reason: format!("Fragment \"{fragment}\" cannot be a BCPL string: {error}.",)
+                    .into(),
             }
-        }
+        })?;
+        path_fragments.push(fragment);
     }
 
     debug!("Path normalised into: \"/{}\".", path_fragments.join("/"));
@@ -180,13 +167,13 @@ fn unwrap_record(
         }
 
         Err(error) => {
-            let line = if let Some(position) = error.position() {
-                report_parse_error!(position.line(), error);
-                position.line()
-            } else {
-                error!("Record parse failed: {error}.");
-                0
-            };
+            let line = error.position().map_or_else(
+                || {
+                    error!("Record parse failed: {error}.");
+                    0
+                },
+                Position::line,
+            );
             Err(Error::InvalidFileList {
                 line,
                 reason: error.to_string().into(),
@@ -203,17 +190,13 @@ fn unwrap_record(
 /// invalid.
 fn parse_target_path(field: Option<&str>, line: u64) -> Result<String, Error> {
     if let Some(path) = field {
-        let wrapped_name = normalise_target_path(path);
-        if let Err(error) = wrapped_name {
-            report_parse_error!(line, "cannot normalise target path \"{}\"", path);
-            return Err(Error::InvalidFileList {
+        Ok(
+            normalise_target_path(path).map_err(|error| Error::InvalidFileList {
                 line,
                 reason: format!("Cannot parse target path: {error}.").into(),
-            });
-        }
-        Ok(wrapped_name.unwrap())
+            })?,
+        )
     } else {
-        report_parse_error!(line, "target path missing");
         Err(Error::InvalidFileList {
             line,
             reason: "Target path missing in record.".into(),
@@ -236,50 +219,34 @@ fn parse_source_path(
         if path.is_empty() {
             return Ok(None);
         }
-        let wrapped_path_buffer = PathBuf::from_str(path).unwrap().canonicalize();
-        if let Err(error) = wrapped_path_buffer {
-            report_parse_error!(line, "cannot canonicalise source path \"{}\"", path);
-            return Err(Error::InvalidFileList {
+
+        let path_buffer = PathBuf::from_str(path)
+            .unwrap()
+            .canonicalize()
+            .map_err(|error| Error::InvalidFileList {
                 line,
                 reason: format!("Cannot canonicalise source path: {error}").into(),
-            });
-        }
+            })?;
 
         // Reading a file at a later stage may theoretically trigger a denial of
         // service if the input file is changed between this instant and the
         // moment the file is opened and read from.  Thus, the file data is read
         // upfront rather than on-demand.
 
-        let wrapped_file = File::open(wrapped_path_buffer.as_ref().unwrap());
-        if let Err(error) = wrapped_file {
-            report_parse_error!(line, "cannot open source path \"{}\"", path);
-            return Err(Error::InvalidFileList {
-                line,
-                reason: format!("Cannot open source path: {error}").into(),
-            });
-        }
-        let mut file = wrapped_file.unwrap();
-        let wrapped_metadata = file.metadata();
-        if let Err(error) = wrapped_metadata {
-            report_parse_error!(line, "cannot acquire metadata for source path \"{}\"", path);
-            return Err(Error::InvalidFileList {
-                line,
-                reason: format!("Cannot acquire metadata for source path: {error}").into(),
-            });
-        }
-        let metadata = wrapped_metadata.unwrap();
+        let mut file = File::open(&path_buffer).map_err(|error| Error::InvalidFileList {
+            line,
+            reason: format!("Cannot open source path: {error}").into(),
+        })?;
+
+        let metadata = file.metadata().map_err(|error| Error::InvalidFileList {
+            line,
+            reason: format!("Cannot acquire metadata for source path: {error}").into(),
+        })?;
         if !metadata.is_file() {
-            report_parse_error!(line, "source path \"{}\" is not a file", path);
             return Err(Error::InvalidSourcePath(path.to_owned()));
         }
         let size = metadata.len();
         if size > maximum_size {
-            report_parse_error!(
-                line,
-                "source path file \"{}\" too big ({} bytes).",
-                path,
-                size
-            );
             return Err(Error::InvalidFileList {
                 line,
                 reason: format!("Source path {path} is too large ({size} bytes).").into(),
@@ -288,7 +255,7 @@ fn parse_source_path(
 
         debug!(
             "Using source path \"{}\" containing {} bytes.",
-            wrapped_path_buffer.as_ref().unwrap().display(),
+            path_buffer.display(),
             size
         );
 
@@ -296,7 +263,7 @@ fn parse_source_path(
         #[allow(clippy::cast_possible_truncation)]
         let mut buffer: Vec<u8> = vec![0u8; size as usize];
         file.read_exact(&mut buffer)?;
-        Ok(Some((wrapped_path_buffer.unwrap().clone(), buffer)))
+        Ok(Some((path_buffer, buffer)))
     } else {
         debug!("No source path provided.");
         Ok(None)
@@ -313,7 +280,6 @@ fn parse_comment(field: Option<&str>, line: u64) -> Result<Option<BCPLString>, E
     if let Some(comment_string) = field {
         let wrapped_comment = build_bcpl_string(comment_string, MAXIMUM_COMMENT_LENGTH, None);
         if let Err(error) = wrapped_comment {
-            report_parse_error!(line, "invalid comment found \"{}\"", error);
             return Err(Error::InvalidFileList {
                 line,
                 reason: format!("Comment cannot be encoded: {error}.").into(),
@@ -337,7 +303,6 @@ fn parse_protection_bits(field: Option<&str>, line: u64) -> Result<Option<Protec
         Some(bits) => {
             let wrapped_bits = ProtectionBits::from_str(bits);
             if let Err(error) = wrapped_bits {
-                report_parse_error!(line, "cannot parse protection bits: {}", error);
                 return Err(Error::InvalidFileList {
                     line,
                     reason: format!("Cannot parse protection bits: {error}.").into(),
@@ -357,34 +322,27 @@ fn parse_protection_bits(field: Option<&str>, line: u64) -> Result<Option<Protec
 /// The function will return [`Error::InvalidFileList`] if the file timestamp
 /// is invalid.
 fn parse_timestamp(field: Option<&str>, line: u64) -> Result<Option<DateStamp>, Error> {
-    match field {
-        Some(string) => {
-            if string.is_empty() {
-                return Ok(Some(DateStamp::default()));
-            }
-
-            let wrapped_timestamp = DateTime::parse_from_rfc3339(string);
-            if let Err(error) = wrapped_timestamp {
-                report_parse_error!(line, "cannot parse timestamp: {}", error);
-                return Err(Error::InvalidFileList {
-                    line,
-                    reason: format!("Cannot parse timestamp: {error}.").into(),
-                });
-            }
-
-            let wrapped_datestamp =
-                DateStamp::from_utc(wrapped_timestamp.unwrap().with_timezone(&Utc));
-            if let Err(error) = wrapped_datestamp {
-                report_parse_error!(line, "cannot convert timestamp: {}", error);
-                return Err(Error::InvalidFileList {
-                    line,
-                    reason: format!("Cannot convert timestamp: {error}.").into(),
-                });
-            }
-
-            Ok(Some(wrapped_datestamp.unwrap()))
+    if let Some(string) = field {
+        if string.is_empty() {
+            return Ok(Some(DateStamp::default()));
         }
-        None => Ok(None),
+
+        Ok(Some(
+            DateStamp::from_utc(
+                DateTime::parse_from_rfc3339(string)
+                    .map_err(|error| Error::InvalidFileList {
+                        line,
+                        reason: format!("Cannot parse timestamp: {error}.").into(),
+                    })?
+                    .with_timezone(&Utc),
+            )
+            .map_err(|error| Error::InvalidFileList {
+                line,
+                reason: format!("Cannot convert timestamp: {error}.").into(),
+            })?,
+        ))
+    } else {
+        Ok(None)
     }
 }
 
@@ -408,7 +366,7 @@ fn parse_timestamp(field: Option<&str>, line: u64) -> Result<Option<DateStamp>, 
 ///
 /// The function will return [`Error::InvalidFileList`] if one or more entries
 /// are invalid.
-pub(crate) fn read_file_list<R>(reader: &mut R, maximum_size: u64) -> Result<Vec<DiskEntry>, Error>
+pub fn read_file_list<R>(reader: &mut R, maximum_size: u64) -> Result<Vec<DiskEntry>, Error>
 where
     R: Read,
 {
@@ -423,7 +381,6 @@ where
         let (line, record) = unwrap_record(&file_entry)?;
 
         if record.len() > 5 {
-            report_parse_error!(line, "too many fields ({})", record.len());
             return Err(Error::InvalidFileList {
                 line,
                 reason: "Stray fields found.".into(),
@@ -434,7 +391,6 @@ where
         debug!("Found target path: \"{target_path}\"");
         let normalised_name = target_path.to_lowercase();
         if names_set.contains(&normalised_name) {
-            report_parse_error!(line, "duplicated file entry \"{}\"", target_path);
             return Err(Error::InvalidFileList {
                 line,
                 reason: format!("Duplicated file entry \"{target_path}\".").into(),
