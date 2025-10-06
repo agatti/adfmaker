@@ -371,7 +371,7 @@ impl fmt::Display for DateStamp {
 #[allow(clippy::doc_overindented_list_items)]
 /// Amiga file object protection bits.
 ///
-/// This is a collection of five flags representing the access permissions that
+/// This is a collection of seven flags representing the access permissions that
 /// objects can have both in Amiga OS OFS and FFS filesystems.  The permission
 /// bits are:
 ///

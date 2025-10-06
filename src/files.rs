@@ -226,7 +226,7 @@ pub fn build_file_metadata_blocks(
         extensions_block_iterator
             .by_ref()
             .peek()
-            .map_or("N/A".into(), |block| format!("#{}", block.0))
+            .map_or_else(|| "N/A".into(), |block| format!("#{}", block.0))
     );
     blocks.push(build_file_header_block(
         *metadata_block.0,
@@ -254,7 +254,7 @@ pub fn build_file_metadata_blocks(
             sequence_block_index,
             header_block_numbers.len(),
             block_pair.0,
-            next.map_or("N/A".into(), |block| format!("#{block}"))
+            next.map_or_else(|| "N/A".into(), |block| format!("#{block}"))
         );
         blocks.push(build_file_list_block(
             *metadata_block.0,

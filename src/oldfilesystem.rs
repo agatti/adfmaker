@@ -132,9 +132,10 @@ impl FileSystemInternal for OldFileSystem {
                 sequence_number,
                 block_numbers.len(),
                 block_number,
-                next_block_number.map_or("N/A (end of sequence reached)".into(), |block| format!(
-                    "#{block}"
-                ))
+                next_block_number.map_or_else(
+                    || "N/A (end of sequence reached)".into(),
+                    |block| format!("#{block}")
+                )
             );
             blocks.push(build_data_block(
                 block_number,
