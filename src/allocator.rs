@@ -215,13 +215,12 @@ impl BitmapAllocator {
             .collect::<Vec<bool>>()
             .chunks(u32::BITS as usize)
             .flat_map(|bits| {
-                let mut word: u32 = 0;
-                for (position, value) in bits.iter().enumerate() {
-                    if *value {
-                        word |= 1u32 << position;
-                    }
-                }
-                word.to_be_bytes()
+                bits.iter()
+                    .enumerate()
+                    .fold(0u32, |word, (position, value)| {
+                        word | u32::from(*value) << position
+                    })
+                    .to_be_bytes()
             })
             .collect::<Vec<u8>>()
     }

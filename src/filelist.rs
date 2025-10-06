@@ -41,11 +41,11 @@ impl fmt::Display for DiskEntry {
             "{} -> {} ({} bytes)",
             self.source_path
                 .as_ref()
-                .map_or("N/A".to_owned(), |path| path.display().to_string()),
+                .map_or_else(|| "N/A".to_owned(), |path| path.display().to_string()),
             self.target_path,
             self.contents
                 .as_ref()
-                .map_or("N/A".to_owned(), |contents| contents.len().to_string())
+                .map_or_else(|| "N/A".to_owned(), |contents| contents.len().to_string())
         )
     }
 }

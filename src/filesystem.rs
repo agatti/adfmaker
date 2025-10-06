@@ -122,7 +122,7 @@ impl Node {
             name,
             payload
                 .as_ref()
-                .map_or("No payload".to_owned(), ToString::to_string)
+                .map_or_else(|| "No payload".to_owned(), ToString::to_string)
         );
         let node = Self {
             parent: RefCell::new(Rc::downgrade(parent)),

@@ -76,8 +76,8 @@ impl FileSystemInternal for FastFileSystem {
                     sequence_number,
                     block_numbers.len(),
                     block_number,
-                    peekable_block_numbers.peek().map_or(
-                        "N/A (end of sequence reached)".into(),
+                    peekable_block_numbers.peek().map_or_else(
+                        || "N/A (end of sequence reached)".into(),
                         |next_block| format!("#{next_block}")
                     )
                 );
