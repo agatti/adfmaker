@@ -62,7 +62,7 @@ pub struct Node {
     /// reference as the parent node keeps a strong reference onto the node
     /// being created, hence making sure that either nodes won't be collected
     /// unless explicitly requested.
-    parent: RefCell<Weak<RefCell<Node>>>,
+    parent: RefCell<Weak<RefCell<Self>>>,
 
     /// A chained hash map containing children nodes.
     ///
@@ -187,19 +187,16 @@ impl Node {
             );
 
             let found_node = current.borrow().find_child(path_fragment);
-            current = found_node.map_or_else(
-                || {
-                    Self::new(
-                        &current,
-                        &BCPLString::from_str(path_fragment).unwrap(),
-                        None,
-                        None,
-                        None,
-                        None,
-                    )
-                },
-                |found_node_reference| found_node_reference,
-            );
+            current = found_node.unwrap_or_else(|| {
+                Self::new(
+                    &current,
+                    &BCPLString::from_str(path_fragment).unwrap(),
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            });
         }
 
         let mut borrowed_current = current.borrow_mut();

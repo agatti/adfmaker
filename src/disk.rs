@@ -503,8 +503,8 @@ impl<'a> DiskImageBuilder<'a> {
     /// etc.), or [`Error::BootCodeTooLarge`] if the given file does not fit
     /// in the amount of space allocated for a boot block.
     pub fn set_boot_block(&mut self, path: Option<PathBuf>) -> Result<&mut Self, Error> {
-        if path.is_some() {
-            self.boot_code = read_boot_block(&path.unwrap())?;
+        if let Some(unwrapped_path) = path {
+            self.boot_code = read_boot_block(&unwrapped_path)?;
         }
 
         Ok(self)

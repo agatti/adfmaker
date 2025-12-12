@@ -28,6 +28,7 @@ thiserror = "2.0.16"
 
 [lints.rust]
 ambiguous_negative_literals = "deny"
+deprecated_in_future = "deny"
 deprecated_safe = "deny"
 future_incompatible = "deny"
 keyword_idents = "deny"
@@ -38,7 +39,6 @@ rust_2018_compatibility = "deny"
 rust_2018_idioms = "deny"
 rust_2021_compatibility = "deny"
 rust_2024_compatibility = "deny"
-unreachable_patterns = "deny"
 unused = "deny"
 warnings = "deny"
 
