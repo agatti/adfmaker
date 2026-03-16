@@ -93,3 +93,49 @@ pub enum Error {
     #[error("timestamp \"{0}\" cannot be represented as a DateStamp")]
     TimestampRepresentation(chrono::DateTime<chrono::Utc>),
 }
+
+/// The non-ASCII printable characters that are part of the ISO-8859-1 character
+/// set.
+const ISO_8859_1_EXTRA: [char; 96] = [
+    ' ', '¡', '¢', '£', '¤', '¥', '¦', '§', '¨', '©', 'ª', '«', '¬', ' ', '®', '¯', '°', '±', '²',
+    '³', '´', 'µ', '¶', '·', '¸', '¹', 'º', '»', '¼', '½', '¾', '¿', 'À', 'Á', 'Â', 'Ã', 'Ä', 'Å',
+    'Æ', 'Ç', 'È', 'É', 'Ê', 'Ë', 'Ì', 'Í', 'Î', 'Ï', 'Ð', 'Ñ', 'Ò', 'Ó', 'Ô', 'Õ', 'Ö', '×', 'Ø',
+    'Ù', 'Ú', 'Û', 'Ü', 'Ý', 'Þ', 'ß', 'à', 'á', 'â', 'ã', 'ä', 'å', 'æ', 'ç', 'è', 'é', 'ê', 'ë',
+    'ì', 'í', 'î', 'ï', 'ð', 'ñ', 'ò', 'ó', 'ô', 'õ', 'ö', '÷', 'ø', 'ù', 'ú', 'û', 'ü', 'ý', 'þ',
+    'ÿ',
+];
+
+/// Encode a regular Rust string into an array of bytes encoded into ISO-8859-1.
+///
+/// This function builds a [`Vec<u8>`] containing the input string encoded into
+/// ISO-8859-1.  The function doesn't perform any error recovery or character
+/// substitution and will return an error if encoding did not succeed.
+///
+/// # Errors
+///
+/// If the function encounters a character that is neither part of the
+/// ISO-8859-1 character set nor is actually printable, it will return
+/// [`Error::InvalidBCPLString`] with an appropriate error message.
+pub fn encode_iso8859_1(string: &str) -> Result<Vec<u8>, Error> {
+    let mut output: Vec<u8> = Vec::new();
+
+    for character in string.chars() {
+        if character.is_ascii() {
+            output.push(u8::try_from(character).expect("an ASCII character index fits into an u8"));
+        } else if let Some(matched) = ISO_8859_1_EXTRA
+            .iter()
+            .enumerate()
+            .find(|(_, item)| *item == &character)
+        {
+            let (index, _) = matched;
+            output.push(u8::try_from(index + 0xA0).expect("the offset index must fit into an u8"));
+        } else {
+            return Err(Error::InvalidBCPLString {
+                string: string.to_owned().into(),
+                reason: format!("character '{character}' is not part of ISO-8859-1").into(),
+            });
+        }
+    }
+
+    Ok(output)
+}

@@ -9,10 +9,9 @@
 use std::{fmt, str::FromStr};
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use encoding::{EncoderTrap, Encoding, all::ISO_8859_1};
 use log::{debug, error};
 
-use crate::common::Error;
+use crate::common::{Error, encode_iso8859_1};
 
 #[doc(hidden)]
 macro_rules! report_bcpl_string_error {
@@ -154,14 +153,10 @@ impl FromStr for BCPLString {
             });
         }
 
-        if let Err(error) = ISO_8859_1.encode(string, EncoderTrap::Strict) {
-            return Err(Error::InvalidStringEncoding {
-                string: string.to_owned().into(),
-                reason: error,
-            });
+        match encode_iso8859_1(string) {
+            Ok(_) => Ok(Self(string.to_owned())),
+            Err(error) => Err(error),
         }
-
-        Ok(Self(string.to_owned()))
     }
 }
 
@@ -190,7 +185,7 @@ impl BCPLString {
                 u8::try_from(self.0.len()).expect("The string length is already checked elsewhere");
                 1
             ],
-            ISO_8859_1.encode(&self.0, EncoderTrap::Strict).unwrap(),
+            encode_iso8859_1(&self.0).unwrap(),
         ]
         .concat()
     }

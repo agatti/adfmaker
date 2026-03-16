@@ -14,13 +14,14 @@ use std::{
     str::FromStr,
 };
 
-use encoding::{EncoderTrap, Encoding, all::ISO_8859_1};
 use log::{debug, trace};
 
 use crate::{
     allocator::{BitmapAllocator, FIRST_BLOCK, LAST_BLOCK},
     amigaostypes::{BCPLString, DateStamp, ProtectionBits, build_bcpl_string},
-    common::{self, Error, HASH_TABLE_BUCKETS, MAXIMUM_NAME_LENGTH, ROOT_BLOCK_NUMBER},
+    common::{
+        self, Error, HASH_TABLE_BUCKETS, MAXIMUM_NAME_LENGTH, ROOT_BLOCK_NUMBER, encode_iso8859_1,
+    },
     disk::DiskBlock,
     filelist::DiskEntry,
 };
@@ -343,7 +344,7 @@ impl ChainedHashMap {
     /// [`ChainedHashMap::find_entry`], and for iterating through nodes with
     /// no order look at [`ChainedHashMap::nodes_iter`].
     fn add_entry(&mut self, node: &Rc<RefCell<Node>>) {
-        let wrapped_name = ISO_8859_1.encode(node.borrow().name.as_str(), EncoderTrap::Strict);
+        let wrapped_name = encode_iso8859_1(node.borrow().name.as_str());
         assert!(
             wrapped_name.is_ok(),
             "An invalid node name slipped by: \"{}\".",
