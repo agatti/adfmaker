@@ -130,8 +130,7 @@ fn normalise_target_path(path: &str) -> Result<String, Error> {
         build_bcpl_string(fragment, MAXIMUM_NAME_LENGTH, Some(&[':'])).map_err(|error| {
             Error::InvalidTargetFileName {
                 name: path.to_owned().into(),
-                reason: format!("Fragment \"{fragment}\" cannot be a BCPL string: {error}.",)
-                    .into(),
+                reason: format!("Fragment \"{fragment}\" cannot be a BCPL string: {error}.").into(),
             }
         })?;
         path_fragments.push(fragment);

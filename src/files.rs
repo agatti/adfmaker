@@ -241,10 +241,7 @@ pub fn build_file_metadata_blocks(
     debug!("File header block successfully built.");
     sequence_block_index += 1;
 
-    loop {
-        let Some(block_pair) = extensions_block_iterator.by_ref().next() else {
-            break;
-        };
+    while let Some(block_pair) = extensions_block_iterator.by_ref().next() {
         let next = extensions_block_iterator
             .by_ref()
             .peek()

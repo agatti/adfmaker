@@ -24,7 +24,7 @@ pub const LAST_BLOCK: u32 = common::BLOCKS_PER_IMAGE as u32;
 /// [`Error::BitmapBlockOutOfRange`].
 pub fn check_block_number(block_number: u32) -> Result<(), Error> {
     if !(FIRST_BLOCK..LAST_BLOCK).contains(&block_number) {
-        error!("Block #{block_number} is outside the disk image bounds.",);
+        error!("Block #{block_number} is outside the disk image bounds.");
         return Err(Error::BitmapBlockOutOfRange(block_number));
     }
 
